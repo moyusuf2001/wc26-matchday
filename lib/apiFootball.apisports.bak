@@ -1,0 +1,349 @@
+// ---------------------------------------------------------------------------
+// API-Football (v3) helper — runs ONLY on the server. Your key stays here and
+// never reaches the browser. Responses are cached so visitors hit the cache,
+// not your daily quota.
+//
+// Free tier (api-sports.io dashboard): ~100 requests/day. The caching below
+// (revalidate) means a busy day still costs only a handful of real calls.
+//
+// >>> THE VALUES YOU MAY NEED TO CONFIRM ARE RIGHT HERE <<<
+//   WC_LEAGUE_ID / WC_SEASON  — the World Cup league id + season (1 / 2026).
+//   CLUB_SEASON               — the just-finished club season for player form.
+// Confirm the league id on your dashboard with:
+//   GET https://v3.football.api-sports.io/leagues?search=World%20Cup
+// ---------------------------------------------------------------------------
+
+const BASE = 'https://v3.football.api-sports.io';
+export const WC_LEAGUE_ID = Number(process.env.WC_LEAGUE_ID) || 1;
+export const WC_SEASON = Number(process.env.WC_SEASON) || 2026;
+// Current club form comes from the just-finished season, which uses a DIFFERENT
+// season number than the World Cup (e.g. the 2025-26 European season = 2025).
+export const CLUB_SEASON = Number(process.env.CLUB_SEASON) || 2025;
+
+// Match statuses that mean the game was actually played (so it has a lineup).
+const FINISHED = new Set(['FT', 'AET', 'PEN']);
+
+async function apiGet(path, revalidate = 3600) {
+  const key = process.env.API_FOOTBALL_KEY;
+  if (!key) throw new Error('Missing API_FOOTBALL_KEY (set it in .env.local)');
+  const res = await fetch(`${BASE}${path}`, {
+    headers: { 'x-apisports-key': key },
+    next: { revalidate },           // Next.js caches by URL for this many seconds
+  });
+  if (!res.ok) throw new Error(`API-Football responded ${res.status}`);
+  const json = await res.json();
+  if (json.errors && Object.keys(json.errors).length) {
+    throw new Error('API-Football: ' + JSON.stringify(json.errors));
+  }
+  return json.response || [];
+}
+
+// Resolve the numeric team id for a country name, by listing the WC teams once
+// (cached for a day). Avoids hard-coding 48 ids that could be wrong.
+let _teamMap = null;
+async function teamMap() {
+  if (_teamMap) return _teamMap;
+  const rows = await apiGet(`/teams?league=${WC_LEAGUE_ID}&season=${WC_SEASON}`, 86400);
+  _teamMap = {};
+  for (const r of rows) {
+    if (r.team?.name) _teamMap[norm(r.team.name)] = r.team.id;
+  }
+  return _teamMap;
+}
+const norm = (s) => s.toLowerCase().replace(/[^a-z]/g, '');
+
+// Common name differences between our static data and the provider.
+const ALIAS = {
+  koreareplublic: 'southkorea', koreareublic: 'southkorea', korearepublic: 'southkorea',
+  unitedstates: 'usa', czechia: 'czechrepublic', turkiye: 'turkey',
+  ivorycoast: 'cotedivoire', capeverde: 'capeverdeislands', drcongo: 'congodr',
+};
+async function idFor(name) {
+  const map = await teamMap();
+  const n = norm(name);
+  return map[n] ?? map[ALIAS[n]] ?? null;
+}
+
+// Synthetic "row:col" grid for a player whose lineup entry has no grid, so the
+// pitch can still place them. Row 1 = goalkeeper end (matches the API convention).
+function gridFromPos(pos, idxInRow) {
+  const p = (pos || 'M').charAt(0).toUpperCase();
+  const row = p === 'G' ? 1 : p === 'D' ? 2 : p === 'F' ? 4 : 3;
+  return `${row}:${idxInRow + 1}`;
+}
+
+// Flatten one /players statistics entry into a compact, render-ready shape.
+function pickStat(s) {
+  return {
+    team: s.team?.name ?? null,
+    teamLogo: s.team?.logo ?? null,
+    league: s.league?.name ?? null,
+    season: s.league?.season ?? null,
+    apps: s.games?.appearences ?? 0,
+    lineups: s.games?.lineups ?? 0,
+    minutes: s.games?.minutes ?? 0,
+    position: s.games?.position ?? null,
+    rating: s.games?.rating ? Number(s.games.rating).toFixed(1) : null,
+    captain: s.games?.captain ?? false,
+    goals: s.goals?.total ?? 0,
+    assists: s.goals?.assists ?? 0,
+    shots: s.shots?.total ?? 0,
+    shotsOn: s.shots?.on ?? 0,
+    passes: s.passes?.total ?? 0,
+    keyPasses: s.passes?.key ?? 0,
+    passAcc: s.passes?.accuracy ?? null,
+    dribblesAtt: s.dribbles?.attempts ?? 0,
+    dribblesSucc: s.dribbles?.success ?? 0,
+    tackles: s.tackles?.total ?? 0,
+    duels: s.duels?.total ?? 0,
+    duelsWon: s.duels?.won ?? 0,
+    yellow: s.cards?.yellow ?? 0,
+    red: s.cards?.red ?? 0,
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Squad — full current 26-man (or larger) squad for a team.
+// ---------------------------------------------------------------------------
+export async function getSquad(teamName) {
+  const id = await idFor(teamName);
+  if (!id) return { teamId: null, players: [] };
+  const rows = await apiGet(`/players/squads?team=${id}`, 86400);
+  const players = rows[0]?.players ?? [];
+  return { teamId: id, players };
+}
+
+// ---------------------------------------------------------------------------
+// Fixture lookup — find the WC fixture id for a tie by the two team names.
+// Shared by official lineups + predictions so the URL (and cache entry) match.
+// ---------------------------------------------------------------------------
+async function findFixtureId(homeName, awayName) {
+  const [hId, aId] = await Promise.all([idFor(homeName), idFor(awayName)]);
+  if (!hId || !aId) return { fixtureId: null, hId, aId };
+  const fixtures = await apiGet(`/fixtures?league=${WC_LEAGUE_ID}&season=${WC_SEASON}&team=${hId}`, 3600);
+  const fx = fixtures.find((f) =>
+    (f.teams?.home?.id === hId && f.teams?.away?.id === aId) ||
+    (f.teams?.home?.id === aId && f.teams?.away?.id === hId));
+  return { fixtureId: fx?.fixture?.id ?? null, hId, aId };
+}
+
+// ---------------------------------------------------------------------------
+// Projected XI — API-Football has NO predicted-lineup endpoint, so we derive a
+// likely starting XI from the team's most recent finished match(es). depth=1
+// (default, cheapest) = "last match XI"; depth=3 = "most-used over last 3".
+// ---------------------------------------------------------------------------
+export async function getProjectedXI(teamName, depth = 1) {
+  const empty = (teamId) => ({ teamId, formation: null, source: 'none', partial: false, basis: [], xi: [] });
+  const id = await idFor(teamName);
+  if (!id) return empty(null);
+
+  let fixtures = [];
+  try {
+    fixtures = await apiGet(`/fixtures?team=${id}&last=${depth + 2}`, 21600);
+  } catch {
+    return empty(id);
+  }
+  const finished = fixtures
+    .filter((f) => FINISHED.has(f.fixture?.status?.short))
+    .sort((a, b) => new Date(b.fixture.date) - new Date(a.fixture.date))
+    .slice(0, depth);
+  if (!finished.length) return empty(id);
+
+  const formationCount = {};
+  const agg = new Map(); // playerId -> { id, name, count, grid, number, pos, order }
+  const basis = [];
+  let order = 0;
+  for (const f of finished) {
+    const opp = f.teams?.home?.id === id ? f.teams?.away?.name : f.teams?.home?.name;
+    basis.push({ date: f.fixture?.date?.slice(0, 10), opponent: opp });
+    let lus = [];
+    try {
+      lus = await apiGet(`/fixtures/lineups?fixture=${f.fixture.id}`, 21600);
+    } catch { continue; }
+    const lu = lus.find((l) => l.team?.id === id);
+    if (!lu) continue;
+    if (lu.formation) formationCount[lu.formation] = (formationCount[lu.formation] || 0) + 1;
+    for (const e of lu.startXI || []) {
+      const p = e.player;
+      if (!p?.id) continue;
+      const cur = agg.get(p.id) || { id: p.id, name: p.name, count: 0, grid: null, number: null, pos: null, order: order++ };
+      cur.count += 1;
+      // We iterate newest-first, so the first value seen is the most recent.
+      if (cur.grid == null && p.grid) cur.grid = p.grid;
+      if (cur.number == null && p.number != null) cur.number = p.number;
+      if (cur.pos == null && p.pos) cur.pos = p.pos;
+      agg.set(p.id, cur);
+    }
+  }
+
+  const formation = Object.keys(formationCount).sort((a, b) => formationCount[b] - formationCount[a])[0] || null;
+  const ranked = [...agg.values()].sort((a, b) => b.count - a.count || a.order - b.order).slice(0, 11);
+
+  const posIdx = {};
+  const xi = ranked.map((c) => {
+    let grid = c.grid;
+    if (!grid) {
+      const bucket = (c.pos || 'M').charAt(0).toUpperCase();
+      posIdx[bucket] = posIdx[bucket] || 0;
+      grid = gridFromPos(c.pos, posIdx[bucket]);
+      posIdx[bucket] += 1;
+    }
+    return { id: c.id, name: c.name, number: c.number, pos: c.pos, grid, count: c.count };
+  });
+
+  return {
+    teamId: id,
+    formation,
+    source: depth === 1 ? 'last-match' : `last-${depth}`,
+    partial: xi.length < 11,
+    basis,
+    xi,
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Match lineups — official if published (~1h before KO), else projected XI for
+// both teams. One call from the client; the server decides which to return.
+// ---------------------------------------------------------------------------
+export async function getMatchLineups(homeName, awayName, depth = 1) {
+  const { fixtureId } = await findFixtureId(homeName, awayName);
+  if (fixtureId) {
+    let official = [];
+    try {
+      official = await apiGet(`/fixtures/lineups?fixture=${fixtureId}`, 300);
+    } catch { /* fall through to projected */ }
+    if (official.length >= 1) return { status: 'official', fixtureId, lineups: official };
+  }
+  const [hXI, aXI] = await Promise.all([
+    getProjectedXI(homeName, depth),
+    getProjectedXI(awayName, depth),
+  ]);
+  return { status: 'projected', fixtureId, depth, projected: { home: hXI, away: aXI } };
+}
+
+// ---------------------------------------------------------------------------
+// Player profile — World Cup tournament stats + current club-season form.
+// These live under different season numbers, so it's two calls, merged.
+// ---------------------------------------------------------------------------
+export async function getPlayerProfile(playerId) {
+  const [wcRows, clubRows] = await Promise.all([
+    apiGet(`/players?id=${playerId}&league=${WC_LEAGUE_ID}&season=${WC_SEASON}`, 3600).catch(() => []),
+    apiGet(`/players?id=${playerId}&season=${CLUB_SEASON}`, 86400).catch(() => []),
+  ]);
+  const bio = wcRows[0]?.player || clubRows[0]?.player || null;
+  if (!bio) return { player: null, wc: null, club: null, otherClubCount: 0 };
+
+  const allStats = [...(wcRows[0]?.statistics || []), ...(clubRows[0]?.statistics || [])];
+  const wcStat = allStats.find((s) => s.league?.id === WC_LEAGUE_ID) || null;
+  const clubStats = allStats
+    .filter((s) => s.league?.id !== WC_LEAGUE_ID)
+    .sort((a, b) => (b.games?.appearences || 0) - (a.games?.appearences || 0));
+
+  return {
+    player: {
+      id: bio.id, name: bio.name, firstname: bio.firstname, lastname: bio.lastname,
+      age: bio.age, birthDate: bio.birth?.date, birthPlace: bio.birth?.place,
+      nationality: bio.nationality, height: bio.height, weight: bio.weight,
+      photo: bio.photo, injured: bio.injured,
+    },
+    wc: wcStat ? pickStat(wcStat) : null,
+    club: clubStats[0] ? pickStat(clubStats[0]) : null,
+    otherClubCount: Math.max(0, clubStats.length - 1),
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Team form — derive "how they play" + strengths/weaknesses from recent games.
+// (The WC /teams/statistics endpoint is empty until the tournament is underway,
+// so we use the team's last N matches across all competitions instead.)
+// ---------------------------------------------------------------------------
+export async function getTeamForm(teamName, last = 8) {
+  const id = await idFor(teamName);
+  const blank = { teamId: id, lowSample: true, played: 0, wins: 0, draws: 0, losses: 0, gf: 0, ga: 0, gfAvg: 0, gaAvg: 0, cleanSheets: 0, failedToScore: 0, formString: '', recent: [], strengths: [], weaknesses: [] };
+  if (!id) return blank;
+
+  let fixtures = [];
+  try {
+    fixtures = await apiGet(`/fixtures?team=${id}&last=${last}`, 21600);
+  } catch {
+    return blank;
+  }
+  const ft = fixtures
+    .filter((f) => FINISHED.has(f.fixture?.status?.short))
+    .sort((a, b) => new Date(b.fixture.date) - new Date(a.fixture.date));
+
+  let wins = 0, draws = 0, losses = 0, gf = 0, ga = 0, cleanSheets = 0, failedToScore = 0;
+  let form = '';
+  const recent = [];
+  for (const f of ft) {
+    const isHome = f.teams?.home?.id === id;
+    const hg = f.goals?.home ?? 0, ag = f.goals?.away ?? 0;
+    const my = isHome ? hg : ag, opp = isHome ? ag : hg;
+    gf += my; ga += opp;
+    if (opp === 0) cleanSheets++;
+    if (my === 0) failedToScore++;
+    let r;
+    if (my > opp) { wins++; r = 'W'; } else if (my < opp) { losses++; r = 'L'; } else { draws++; r = 'D'; }
+    form += r;
+    recent.push({
+      date: f.fixture?.date?.slice(0, 10),
+      opp: isHome ? f.teams?.away?.name : f.teams?.home?.name,
+      score: `${my}-${opp}`,
+      result: r,
+    });
+  }
+
+  const played = ft.length;
+  const gfAvg = played ? gf / played : 0;
+  const gaAvg = played ? ga / played : 0;
+  const strengths = [], weaknesses = [];
+  if (played >= 3) {
+    if (gfAvg >= 2) strengths.push(`Free-scoring — ${gfAvg.toFixed(1)} goals a game`);
+    if (cleanSheets / played >= 0.5) strengths.push(`Defensively tight — ${cleanSheets} clean sheet${cleanSheets === 1 ? '' : 's'} in ${played}`);
+    if (wins / played >= 0.6) strengths.push(`In strong form — ${wins} wins in ${played}`);
+    if (gaAvg >= 1.5) weaknesses.push(`Leaky at the back — ${gaAvg.toFixed(1)} conceded a game`);
+    if (failedToScore / played >= 0.34) weaknesses.push(`Goes missing in attack — blanked ${failedToScore}×`);
+    if (losses / played >= 0.4) weaknesses.push(`Inconsistent — ${losses} defeats in ${played}`);
+    if (!strengths.length) strengths.push('Balanced — no standout trait in recent games');
+    if (!weaknesses.length) weaknesses.push('Few obvious weaknesses lately');
+  }
+
+  return {
+    teamId: id,
+    lowSample: played < 3,
+    played, wins, draws, losses, gf, ga,
+    gfAvg: Number(gfAvg.toFixed(2)),
+    gaAvg: Number(gaAvg.toFixed(2)),
+    cleanSheets, failedToScore,
+    formString: form.split('').reverse().join(''), // oldest → newest, left to right
+    recent,
+    strengths, weaknesses,
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Matchup — API-Football's own model comparison for the tie (optional; the WC
+// league may not have predictions coverage, in which case available:false).
+// ---------------------------------------------------------------------------
+export async function getMatchup(homeName, awayName) {
+  const { fixtureId } = await findFixtureId(homeName, awayName);
+  if (!fixtureId) return { available: false };
+  let rows = [];
+  try {
+    rows = await apiGet(`/predictions?fixture=${fixtureId}`, 3600);
+  } catch {
+    return { available: false };
+  }
+  if (!rows.length) return { available: false };
+  const p = rows[0];
+  return {
+    available: true,
+    fixtureId,
+    winner: p.predictions?.winner ?? null,
+    advice: p.predictions?.advice ?? null,
+    percent: p.predictions?.percent ?? null,
+    goals: p.predictions?.goals ?? null,
+    underOver: p.predictions?.under_over ?? null,
+    comparison: p.comparison ?? null,
+  };
+}
