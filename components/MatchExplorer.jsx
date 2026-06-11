@@ -25,6 +25,11 @@ const HEADSHOT = (id) => `https://a.espncdn.com/i/headshots/soccer/players/full/
 // Byline for the "My Thoughts" tactical column; change this to your name.
 const AUTHOR = "Ovais's Analysis";
 
+// Client-side alias: maps static team name norms → ESPN-equivalent norms so the
+// scores lookup (which comes back in ESPN norms) matches correctly.
+const SCORE_ALIAS = { korearepublic: 'southkorea', drcongo: 'congodr' };
+function resolveScoreNorm(name) { const n = _pn(name); return SCORE_ALIAS[n] || n; }
+
 // Match an ESPN full name to the API-Football photo map (keyed by initial+surname).
 const _pn = (s) => (s || '').toLowerCase().normalize('NFD').replace(/[^a-z]/g, '');
 function photoKeys(name) {
@@ -236,7 +241,7 @@ function Pitch({ xi, side, onOpen }) {
       <rect x="29" y="2" width="42" height="18" className="pl" />
       <rect x="29" y="130" width="42" height="18" className="pl" />
       {placed.map((p) => (
-        <g key={p.id} className="pnode" role="button" tabIndex={0}
+        <g key={p.id ?? p.name} className="pnode" role="button" tabIndex={0}
           onClick={() => onOpen(p.id, p.name)}
           onKeyDown={(e) => (e.key === 'Enter' || e.key === ' ') && (e.preventDefault(), onOpen(p.id, p.name))}>
           <circle cx={p.x} cy={p.y} r="9" fill="transparent" />
@@ -270,7 +275,7 @@ function LikelyXI({ name, side, players }) {
   );
 }
 
-function ExpectedOrOfficialLineups({ home, away, homeCode, awayCode, homePlayers, awayPlayers, date, onOpen }) {
+function ExpectedOrOfficialLineups({ home, away, homeCode, awayCode, homePlayers, awayPlayers, date, onOpen, matchResult }) {
   const [data, setData] = useState(null);
   const [err, setErr] = useState(null);
   useEffect(() => {
@@ -289,6 +294,7 @@ function ExpectedOrOfficialLineups({ home, away, homeCode, awayCode, homePlayers
   }, [home, away, date]);
 
   const openFor = (sideKey) => (id, nm) => onOpen(id, nm, sideKey === 'home' ? homeCode : awayCode);
+  const isFT = matchResult && (matchResult.status === 'final' || matchResult.status === 'live');
 
   if (err) return <EmptyState title="Lineups unavailable right now" sub="Check back closer to kickoff." />;
   if (!data) return <div className="muted"><span className="spin" />checking for lineups…</div>;
@@ -297,21 +303,33 @@ function ExpectedOrOfficialLineups({ home, away, homeCode, awayCode, homePlayers
     const lus = data.lineups || [];
     return (
       <>
-        <div className="lineuphd">
-          <Tag tone="official">Official{data.updated && <span className="ago">· {timeAgo(data.updated)}</span>}</Tag>
-          <span>Confirmed starting XI, published by the teams.</span>
-        </div>
+        {!isFT && (
+          <div className="lineuphd">
+            <Tag tone="official">Official{data.updated && <span className="ago">· {timeAgo(data.updated)}</span>}</Tag>
+            <span>Confirmed starting XI, published by the teams.</span>
+          </div>
+        )}
         <div className="squadgrid">
           {lus.map((lu, i) => {
             const sideKey = i === 0 ? 'home' : 'away';
+            const xi = (lu.startXI || []).map((e) => ({ id: e.player?.id, name: e.player?.name, number: e.player?.number, pos: e.player?.pos, grid: e.player?.grid }));
+            // Filter events relevant to players on this side
+            const teamId = sideKey === 'home' ? matchResult?.homeId : matchResult?.awayId;
+            const sideEvents = isFT ? (matchResult.events || []).filter((e) => e.teamId === teamId || !e.teamId) : [];
             return (
               <div key={i}>
                 <h4 className={`pitchteam ${sideKey}`}>{lu.team?.name}{lu.formation ? ` · ${lu.formation}` : ''}</h4>
                 <div className="pitchwrap">
-                  <Pitch side={sideKey} onOpen={openFor(sideKey)}
-                    xi={(lu.startXI || []).map((e) => ({ id: e.player?.id, name: e.player?.name, number: e.player?.number, pos: e.player?.pos, grid: e.player?.grid }))} />
+                  <Pitch side={sideKey} onOpen={openFor(sideKey)} xi={xi} />
                 </div>
                 {lu.coach?.name && <div className="pitchcap">Coach: {lu.coach.name}</div>}
+                {isFT && xi.length > 0 && (
+                  <div className="xi-perf">
+                    {xi.map((p) => (
+                      <PlayerStatsRow key={p.id} player={p} stats={matchResult.playerStats || []} events={sideEvents} />
+                    ))}
+                  </div>
+                )}
               </div>
             );
           })}
@@ -585,6 +603,24 @@ function CallTrack({ call }) {
       <span className="callbar-k">My call</span>
       <span className="callbar-v">{call.label} · {confLabel(call.confidence)}</span>
       <span className={`callstatus ${status}`}>{CALL_STATUS_LABEL[status] || 'Pending'}</span>
+    </div>
+  );
+}
+
+// Compact call outcome shown in Match Report — computes correct/missed from the actual result.
+function CallOutcome({ call, fav, result }) {
+  if (!call) return null;
+  const hs = parseInt(result.homeScore, 10);
+  const as = parseInt(result.awayScore, 10);
+  const actualWinner = hs > as ? 'h' : as > hs ? 'a' : 'd';
+  const predicted = fav || 'd';
+  const correct = predicted === actualWinner;
+  return (
+    <div className="calloutcome">
+      <span className="calloutcome-icon">{correct ? '✅' : '❌'}</span>
+      <span className="calloutcome-label">
+        My call: <b>{call.label}</b> — <span className={correct ? 'calloutcome-win' : 'calloutcome-miss'}>{correct ? 'Correct' : 'Missed'}</span>
+      </span>
     </div>
   );
 }
@@ -864,15 +900,329 @@ function MyThoughts({ take }) {
   );
 }
 
+/* ---------- match result components ---------- */
+
+// Event icons
+const EV_ICON = { goal: '⚽', 'own-goal': '⚽', penalty: '⚽', 'yellow-card': '🟨', 'red-card': '🟥' };
+const EV_SUFFIX = { 'own-goal': ' (og)', penalty: ' (pen)' };
+
+function MotmCard({ motm, homeId, awayId, h, a }) {
+  if (!motm) return null;
+  const team = motm.teamId === homeId ? h : a;
+  const statBadges = [
+    motm.goals > 0 && { icon: '⚽', label: `${motm.goals} goal${motm.goals > 1 ? 's' : ''}` },
+    motm.assists > 0 && { icon: '🎯', label: `${motm.assists} assist${motm.assists > 1 ? 's' : ''}` },
+    motm.shots > 0 && { icon: '🔵', label: `${motm.shots} shot${motm.shots > 1 ? 's' : ''}` },
+    motm.shotsOnTarget > 0 && { icon: '🎯', label: `${motm.shotsOnTarget} on target` },
+    motm.saves > 0 && { icon: '🧤', label: `${motm.saves} save${motm.saves > 1 ? 's' : ''}` },
+    motm.yellowCards > 0 && { icon: '🟨', label: 'Booked' },
+  ].filter(Boolean);
+
+  return (
+    <div className="motm-card">
+      <div className="motm-label">⭐ Man of the Match</div>
+      <div className="motm-body">
+        {motm.photo && (
+          <img
+            className="motm-photo"
+            src={motm.photo}
+            alt={motm.name}
+            onError={(e) => { e.currentTarget.style.display = 'none'; }}
+          />
+        )}
+        <div className="motm-info">
+          <div className="motm-name">{motm.name}</div>
+          <div className="motm-meta">
+            <span className="motm-flag">{team?.f}</span>
+            <span>{team?.n}</span>
+            {motm.pos && <span className="motm-pos">{motm.pos}</span>}
+          </div>
+          <div className="motm-badges">
+            {statBadges.map((b, i) => (
+              <span key={i} className="motm-badge">{b.icon} {b.label}</span>
+            ))}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function MatchEventsTimeline({ events, homeId, awayId }) {
+  const visible = events.filter((e) => EV_ICON[e.type]);
+  if (!visible.length) return null;
+  return (
+    <div className="mev-grid">
+      {visible.map((ev, i) => {
+        const isHome = ev.teamId === homeId || (!ev.teamId && i % 2 === 0);
+        const icon = EV_ICON[ev.type];
+        const suffix = EV_SUFFIX[ev.type] || '';
+        const pname = ev.athletes?.[0]?.name || surname(ev.text?.split(' ')[0] || '') || '';
+        return isHome ? (
+          <div key={i} className="mev-row">
+            <span className="mev-home">
+              <span className="mev-name">{pname}{suffix}</span>
+              <span className="mev-icon">{icon}</span>
+              <span className="mev-min">{ev.minute}&apos;</span>
+            </span>
+            <span className="mev-away" />
+          </div>
+        ) : (
+          <div key={i} className="mev-row">
+            <span className="mev-home" />
+            <span className="mev-away">
+              <span className="mev-min">{ev.minute}&apos;</span>
+              <span className="mev-icon">{icon}</span>
+              <span className="mev-name">{pname}{suffix}</span>
+            </span>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+function MatchScoreHero({ h, a, result }) {
+  if (!result || result.status === 'scheduled') return null;
+  const isLive = result.status === 'live';
+  return (
+    <div className="resulthero">
+      <div className={`result-status-badge ${isLive ? 'live' : 'final'}`}>{result.statusLabel}</div>
+      <div className="result-scoreline">
+        <div className="result-side result-home">
+          <span className="result-flag">{h.f}</span>
+          <span className="result-teamname">{h.n}</span>
+        </div>
+        <div className="result-nums">
+          <span className="result-num">{result.homeScore}</span>
+          <span className="result-sep">–</span>
+          <span className="result-num">{result.awayScore}</span>
+        </div>
+        <div className="result-side result-away">
+          <span className="result-teamname">{a.n}</span>
+          <span className="result-flag">{a.f}</span>
+        </div>
+      </div>
+      {result.events?.length > 0 && (
+        <MatchEventsTimeline events={result.events} homeId={result.homeId} awayId={result.awayId} />
+      )}
+    </div>
+  );
+}
+
+const STAT_GROUPS_DEF = [
+  { key: 'attack',     label: 'Attack',     icon: '⚽' },
+  { key: 'passing',    label: 'Passing',    icon: '🎯' },
+  { key: 'defending',  label: 'Defending',  icon: '🛡' },
+  { key: 'discipline', label: 'Discipline', icon: '📋' },
+];
+
+function MatchTeamStatsGrouped({ teamStats, h, a, homeId, awayId }) {
+  if (!teamStats || teamStats.length < 2) return null;
+  const homeStats = teamStats.find((t) => t.teamId === homeId || t.homeAway === 'home') || teamStats[0];
+  const awayStats = teamStats.find((t) => t.teamId === awayId || t.homeAway === 'away') || teamStats[1];
+  if (!homeStats || !awayStats) return null;
+
+  const buildRows = (group) =>
+    homeStats.stats
+      .filter((s) => s.group === group)
+      .map((hs) => {
+        const as = awayStats.stats.find((s) => s.label === hs.label);
+        if (!as) return null;
+        const hNum = parseFloat(hs.value) || 0;
+        const aNum = parseFloat(as.value) || 0;
+        return { label: hs.label, hVal: hs.value, aVal: as.value, hNum, aNum };
+      })
+      .filter(Boolean);
+
+  const allRows = STAT_GROUPS_DEF.flatMap((g) => buildRows(g.key));
+  if (!allRows.length) return null;
+
+  const StatRow = ({ r }) => (
+    <div className="mstat-row">
+      <span className="mstat-hv">{r.hVal}</span>
+      <div className="mstat-bars">
+        <div className="mstat-bar-wrap">
+          <div className="mstat-bh" style={{ width: r.hNum + r.aNum === 0 ? '50%' : `${Math.round((r.hNum / (r.hNum + r.aNum)) * 100)}%` }} />
+          <div className="mstat-ba" style={{ width: r.hNum + r.aNum === 0 ? '50%' : `${Math.round((r.aNum / (r.hNum + r.aNum)) * 100)}%` }} />
+        </div>
+        <span className="mstat-label">{r.label}</span>
+      </div>
+      <span className="mstat-av">{r.aVal}</span>
+    </div>
+  );
+
+  return (
+    <div className="block">
+      <Lbl tag={<Tag tone="live">ESPN</Tag>}>Match statistics</Lbl>
+      <div className="mstats-names">
+        <span style={{ color: 'var(--teal)', fontWeight: 600 }}>{h.f} {h.n}</span>
+        <span style={{ color: 'var(--coral)', fontWeight: 600 }}>{a.n} {a.f}</span>
+      </div>
+      {STAT_GROUPS_DEF.map((grp) => {
+        const rows = buildRows(grp.key);
+        if (!rows.length) return null;
+        return (
+          <div key={grp.key} className="mstats-group">
+            <div className="mstats-grphd">{grp.icon} {grp.label}</div>
+            <div className="mstats-grid">
+              {rows.map((r) => <StatRow key={r.label} r={r} />)}
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+// Full player stat table for finished/live matches — one row per player.
+function PostMatchLineupStats({ result, h, a }) {
+  if (!result || (result.status !== 'final' && result.status !== 'live')) return null;
+  const all = result.playerStats || [];
+  if (!all.length) return null;
+
+  const sortPlayers = (players) =>
+    [...players].sort((x, y) => {
+      if (x.starter !== y.starter) return y.starter ? 1 : -1;
+      return (parseInt(x.jersey, 10) || 99) - (parseInt(y.jersey, 10) || 99);
+    });
+
+  const homePlayers = sortPlayers(all.filter((p) => p.teamId === result.homeId));
+  const awayPlayers = sortPlayers(all.filter((p) => p.teamId === result.awayId));
+  if (!homePlayers.length && !awayPlayers.length) return null;
+
+  const COLS = [
+    { key: 'goals',         lbl: 'G',   title: 'Goals' },
+    { key: 'assists',       lbl: 'A',   title: 'Assists' },
+    { key: 'shots',         lbl: 'Sh',  title: 'Shots' },
+    { key: 'shotsOnTarget', lbl: 'SoT', title: 'Shots on Target' },
+    { key: 'fouls',         lbl: 'FC',  title: 'Fouls Committed' },
+    { key: 'yellowCards',   lbl: '🟨',  title: 'Yellow Card' },
+    { key: 'redCards',      lbl: '🟥',  title: 'Red Card' },
+  ];
+
+  const TeamTable = ({ players, team, side }) => (
+    <div className={`plst-team plst-${side}`}>
+      <div className="plst-teamhd">
+        <span className="plst-flag">{team.f}</span>
+        <span>{team.n}</span>
+      </div>
+      <div className="plst-tbl">
+        <div className="plst-tbl-hd">
+          <span /> {/* jersey column — no header label */}
+          <span className="plst-hd-name">Player</span>
+          {COLS.map((c) => (
+            <span key={c.key} className="plst-hd-stat" title={c.title}>{c.lbl}</span>
+          ))}
+        </div>
+        <div className="plst-rows">
+          {players.map((p, i) => {
+            const divider = i > 0 && !p.starter && players[i - 1].starter;
+            const highlight = p.redCards > 0 ? 'plst-rc' : p.yellowCards > 0 ? 'plst-yc' : p.goals > 0 ? 'plst-goal' : '';
+            return (
+              <div key={p.id}>
+                {divider && <div className="plst-divider">— substitutes —</div>}
+                <div className={`plst-row ${!p.starter ? 'plst-sub' : ''} ${highlight}`}>
+                  <span className="plst-jsy">{p.jersey}</span>
+                  <span className="plst-name">
+                    {p.subbedIn && <span className="plst-arrow up" title="Came on">↑</span>}
+                    {p.subbedOut && <span className="plst-arrow dn" title="Subbed off">↓</span>}
+                    {p.shortName || p.name}
+                    <span className="plst-pos">{p.pos}</span>
+                  </span>
+                  {COLS.map((c) => (
+                    <span key={c.key} className={`plst-stat ${p[c.key] > 0 ? 'plst-hi' : ''}`}>
+                      {p[c.key] > 0 ? p[c.key] : '–'}
+                    </span>
+                  ))}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    </div>
+  );
+
+  return (
+    <div className="block">
+      <Lbl tag={<Tag tone="official">FT · ESPN</Tag>}>Player performances</Lbl>
+      <div className="plst-wrap">
+        <TeamTable players={homePlayers} team={h} side="home" />
+        <TeamTable players={awayPlayers} team={a} side="away" />
+      </div>
+    </div>
+  );
+}
+
+// Player performances: show stats for starters who have notable match events.
+function PlayerStatsRow({ player, stats, events }) {
+  // Match events by player name (ESPN event participants use full name)
+  const normName = (n) => (n || '').toLowerCase().trim();
+  const pn = normName(player.name);
+  const matchName = (n) => normName(n) === pn || normName(n).includes(pn.split(' ').pop());
+
+  const goalEvents = events.filter((e) => (e.type === 'goal' || e.type === 'penalty') && e.athletes?.some((a) => matchName(a.name)));
+  const ogEvents = events.filter((e) => e.type === 'own-goal' && e.athletes?.some((a) => matchName(a.name)));
+  const yellowEvents = events.filter((e) => e.type === 'yellow-card' && e.athletes?.some((a) => matchName(a.name)));
+  const redEvents = events.filter((e) => e.type === 'red-card' && e.athletes?.some((a) => matchName(a.name)));
+
+  // Structured player stats from rosters (more reliable)
+  const ps = stats?.find((s) => s.id === player.id || matchName(s.name));
+  const assists = ps ? Number(ps.assists || 0) : 0;
+
+  const badges = [];
+  goalEvents.forEach((e) => badges.push(<span key={`g${e.minute}`} className="pbadge pbadge-goal">⚽ {e.minute}&apos;</span>));
+  ogEvents.forEach((e) => badges.push(<span key={`og${e.minute}`} className="pbadge pbadge-og">⚽og {e.minute}&apos;</span>));
+  if (assists > 0) badges.push(<span key="ast" className="pbadge pbadge-assist">🎯 ×{assists}</span>);
+  yellowEvents.forEach((e) => badges.push(<span key={`y${e.minute}`} className="pbadge pbadge-yellow">🟨 {e.minute}&apos;</span>));
+  redEvents.forEach((e) => badges.push(<span key={`r${e.minute}`} className="pbadge pbadge-red">🟥 {e.minute}&apos;</span>));
+
+  if (!badges.length) return null;
+  return (
+    <div className="pstatrow">
+      <span className="pstat-num">{player.number ?? ''}</span>
+      <span className="pstat-name">{player.name}</span>
+      <span className="pstat-badges">{badges}</span>
+    </div>
+  );
+}
+
+function MatchResultPanel({ home, away, date, h, a, result, setResult }) {
+  useEffect(() => {
+    if (!date) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const r = await fetch(`/api/result?home=${encodeURIComponent(home)}&away=${encodeURIComponent(away)}&date=${date}`);
+        const d = await r.json();
+        if (!cancelled && !d.error) setResult(d);
+      } catch { /* result enrichment is optional */ }
+    })();
+    return () => { cancelled = true; };
+  }, [home, away, date]);
+  return null; // data-only component; rendering happens in MatchDetail
+}
+
 /* ---------- match detail modal ---------- */
-function MatchDetail({ m, T, onClose, onOpenPlayer }) {
+function MatchDetail({ m, T, onClose, onOpenPlayer, hasResult }) {
   const h = T[m.h], a = T[m.a];
   const fav = m.fav === 'h' ? h : m.fav === 'a' ? a : null;
   const ed = getEditorial(m, T);
+  const [result, setResult] = useState(null);
+  const date = fixtureDate(m);
+
   useEffect(() => {
     document.body.style.overflow = 'hidden';
     return () => { document.body.style.overflow = ''; };
   }, []);
+
+  const isFinalOrLive = result && (result.status === 'final' || result.status === 'live');
+
+  // Initialise to 'report' immediately if the scoreMap already shows a result for this match.
+  const [tab, setTab] = useState(() => hasResult ? 'report' : 'preview');
+  const activeTab = tab;
+
   return (
     <div className="scrim" onClick={(e) => e.target === e.currentTarget && onClose()}>
       <div className="sheet" role="dialog" aria-modal="true">
@@ -882,87 +1232,177 @@ function MatchDetail({ m, T, onClose, onOpenPlayer }) {
             <div className="meta">
               <span>Group {m.grp}</span>
               <span>{m.ds}</span>
-              <span><b>{m.t} {m.z}</b></span>
+              {isFinalOrLive
+                ? <span><b style={{ color: result.status === 'live' ? 'var(--teal)' : 'var(--green)' }}>{result.statusLabel}</b></span>
+                : <span><b>{m.t} {m.z}</b></span>}
               <span>{m.v}, {m.c}</span>
             </div>
           </div>
           <button className="x" aria-label="Close" onClick={onClose}>✕</button>
         </div>
+
+        {/* Tab bar */}
+        <div className="tabnav">
+          <button
+            className={`tabpill ${activeTab === 'report' ? 'tabpill-active' : ''} ${!isFinalOrLive ? 'tabpill-disabled' : ''}`}
+            onClick={() => isFinalOrLive && setTab('report')}
+            aria-disabled={!isFinalOrLive}
+          >
+            Match Report
+            {isFinalOrLive && <span className="tabpill-dot" />}
+          </button>
+          <button
+            className={`tabpill ${activeTab === 'preview' ? 'tabpill-active' : ''}`}
+            onClick={() => setTab('preview')}
+          >
+            Preview
+          </button>
+        </div>
+
         <div className="mbody">
-          <StorylineLede storyline={ed.storyline} />
+          {/* Silently fetch the match result in the background */}
+          <MatchResultPanel home={h.n} away={a.n} date={date} h={h} a={a} result={result} setResult={setResult} />
 
-          <div className="block">
-            <div className="verdictbox">
-              <div className="stamp">◆ Projected result</div>
-              <div className="pick">
-                {fav ? <><span className="flag">{fav.f}</span>{fav.n} to win</> : <>Too close to call</>}
-                <span className={`cf ${m.conf}`}>{confLabel(m.conf)}</span>
+          {/* ── MATCH REPORT TAB ── */}
+          {activeTab === 'report' && (
+            <>
+              {isFinalOrLive ? (
+                <>
+                  {/* Result verdict — clean: just the winner + call outcome */}
+                  <div className="block">
+                    <div className="verdictbox">
+                      <div className="stamp">◆ Result</div>
+                      <div className="pick" style={{ fontSize: 22 }}>
+                        {parseInt(result.homeScore, 10) > parseInt(result.awayScore, 10)
+                          ? <><span className="flag">{h.f}</span>{h.n} win</>
+                          : parseInt(result.awayScore, 10) > parseInt(result.homeScore, 10)
+                          ? <><span className="flag">{a.f}</span>{a.n} win</>
+                          : <>Draw</>}
+                        <span className="cf high" style={{ fontSize: 10 }}>Final</span>
+                      </div>
+                      <CallOutcome call={ed.call} fav={m.fav} result={result} />
+                    </div>
+                  </div>
+
+                  {/* FT scoreline + events timeline */}
+                  <MatchScoreHero h={h} a={a} result={result} />
+
+                  {/* Man of the Match */}
+                  {result.motm && (
+                    <MotmCard motm={result.motm} homeId={result.homeId} awayId={result.awayId} h={h} a={a} />
+                  )}
+
+                  {/* Formation & lineups */}
+                  <div className="block">
+                    <Lbl tag={<Tag tone="official">FT · ESPN</Tag>}>Formation & lineups</Lbl>
+                    <ExpectedOrOfficialLineups
+                      home={h.n} away={a.n} homeCode={m.h} awayCode={m.a}
+                      homePlayers={h.players} awayPlayers={a.players} date={date} onOpen={onOpenPlayer}
+                      matchResult={result}
+                    />
+                  </div>
+
+                  {/* Team statistics grouped */}
+                  {result.teamStats?.length >= 2 && (
+                    <MatchTeamStatsGrouped teamStats={result.teamStats} h={h} a={a} homeId={result.homeId} awayId={result.awayId} />
+                  )}
+
+                  {/* Player performances */}
+                  <PostMatchLineupStats result={result} h={h} a={a} />
+                </>
+              ) : (
+                /* Match not finished yet — prompt user to check back */
+                <div className="block">
+                  <div style={{ textAlign: 'center', padding: '48px 0 32px', color: 'var(--mute-2)', fontFamily: 'var(--sans)', fontSize: 13 }}>
+                    <div style={{ fontSize: 32, marginBottom: 12 }}>🕐</div>
+                    Match hasn&apos;t kicked off yet.<br />
+                    <span style={{ color: 'var(--mute)' }}>The report will appear here once the match is underway.</span>
+                  </div>
+                </div>
+              )}
+            </>
+          )}
+
+          {/* ── PREVIEW TAB ── */}
+          {activeTab === 'preview' && (
+            <>
+              <StorylineLede storyline={ed.storyline} />
+
+              <div className="block">
+                <div className="verdictbox">
+                  <div className="stamp">◆ Projected result</div>
+                  <div className="pick">
+                    {fav ? <><span className="flag">{fav.f}</span>{fav.n} to win</> : <>Too close to call</>}
+                    <span className={`cf ${m.conf}`}>{confLabel(m.conf)}</span>
+                  </div>
+                  <p>{m.why}</p>
+                  <CallTrack call={ed.call} />
+                </div>
+                <MatchChips ed={ed} />
               </div>
-              <p>{m.why}</p>
-              <CallTrack call={ed.call} />
-            </div>
-            <MatchChips ed={ed} />
-          </div>
 
-          <Watchlist wl={ed.watchlist} />
+              <Watchlist wl={ed.watchlist} />
+              <Stakes text={ed.stakes} />
+              <GroupContext gc={ed.groupContext} />
+              {m.take && <MyThoughts take={m.take} />}
+              <WatchFor items={ed.watch} custom={ed.watchIsCustom} flip={ed.flip} />
+              <PlayerSpotlight spotlight={ed.spotlight} m={m} T={T} />
 
-          <Stakes text={ed.stakes} />
+              <div className="block">
+                <Lbl>Tale of the tape</Lbl>
+                <div className="teamnames">
+                  <div className="tn left"><span className="dot" /><span className="flag">{h.f}</span>{h.n}</div>
+                  <div className="tn right">{a.n}<span className="flag">{a.f}</span><span className="dot" /></div>
+                </div>
+                <div className="tape">
+                  <Tot label="WC titles" hv={h.titles} av={a.titles} hw={h.titles} aw={a.titles} />
+                  <Tot label="Group-winner odds" hv={h.odds} av={a.odds} hw={rankWeight(h.odds)} aw={rankWeight(a.odds)} />
+                  <Tot label="Confederation" hv={h.cf} av={a.cf} hw={1} aw={1} />
+                </div>
+                <div className="bestfin">
+                  <div className="l"><span className="k">Best WC finish</span><br />{h.best}</div>
+                  <div className="r"><span className="k">Best WC finish</span><br />{a.best}</div>
+                </div>
+              </div>
 
-          <GroupContext gc={ed.groupContext} />
+              <TeamIdentity m={m} T={T} />
+              <CoachBattle cb={ed.coachBattle} />
+              <DangerZones zones={ed.zones} m={m} T={T} />
+              <TeamAnalysis hn={h.n} an={a.n} date={date} />
 
-          {m.take && <MyThoughts take={m.take} />}
+              <div className="block">
+                <Lbl tag={<Tag tone="official">ESPN</Tag>}>Starting lineups</Lbl>
+                <ExpectedOrOfficialLineups
+                  home={h.n} away={a.n} homeCode={m.h} awayCode={m.a}
+                  homePlayers={h.players} awayPlayers={a.players} date={date} onOpen={onOpenPlayer}
+                  matchResult={null}
+                />
+              </div>
 
-          <WatchFor items={ed.watch} custom={ed.watchIsCustom} flip={ed.flip} />
+              <div className="block">
+                <Lbl tag={<Tag tone="live">Live · ESPN</Tag>}>Full squads</Lbl>
+                <div className="squadgrid">
+                  <LiveSquad name={h.n} side="home" teamCode={m.h} onOpen={onOpenPlayer} />
+                  <LiveSquad name={a.n} side="away" teamCode={m.a} onOpen={onOpenPlayer} />
+                </div>
+                <div className="scope">Squads and lineups come live from ESPN; player headshots from API-Football. Tap any player for their profile.</div>
+              </div>
 
-          <PlayerSpotlight spotlight={ed.spotlight} m={m} T={T} />
+              <div className="block">
+                <Lbl tag={<Tag tone="verified">Verified</Tag>}>Marquee players</Lbl>
+                <div className="pcols">
+                  <div className="pcol home"><h4>{h.f} {h.n}</h4>{h.players.map((p, i) => <MarqueeCard p={p} key={i} />)}</div>
+                  <div className="pcol away"><h4>{a.f} {a.n}</h4>{a.players.map((p, i) => <MarqueeCard p={p} key={i} />)}</div>
+                </div>
+              </div>
+            </>
+          )}
 
-          <div className="block">
-            <Lbl>Tale of the tape</Lbl>
-            <div className="teamnames">
-              <div className="tn left"><span className="dot" /><span className="flag">{h.f}</span>{h.n}</div>
-              <div className="tn right">{a.n}<span className="flag">{a.f}</span><span className="dot" /></div>
-            </div>
-            <div className="tape">
-              <Tot label="WC titles" hv={h.titles} av={a.titles} hw={h.titles} aw={a.titles} />
-              <Tot label="Group-winner odds" hv={h.odds} av={a.odds} hw={rankWeight(h.odds)} aw={rankWeight(a.odds)} />
-              <Tot label="Confederation" hv={h.cf} av={a.cf} hw={1} aw={1} />
-            </div>
-            <div className="bestfin">
-              <div className="l"><span className="k">Best WC finish</span><br />{h.best}</div>
-              <div className="r"><span className="k">Best WC finish</span><br />{a.best}</div>
-            </div>
-          </div>
+        </div>
 
-          <TeamIdentity m={m} T={T} />
-
-          <CoachBattle cb={ed.coachBattle} />
-
-          <DangerZones zones={ed.zones} m={m} T={T} />
-
-          <div className="block">
-            <Lbl>Starting lineups</Lbl>
-            <ExpectedOrOfficialLineups home={h.n} away={a.n} homeCode={m.h} awayCode={m.a}
-              homePlayers={h.players} awayPlayers={a.players} date={fixtureDate(m)} onOpen={onOpenPlayer} />
-          </div>
-
-          <TeamAnalysis hn={h.n} an={a.n} date={fixtureDate(m)} />
-
-          <div className="block">
-            <Lbl tag={<Tag tone="live">Live · ESPN</Tag>}>Full squads</Lbl>
-            <div className="squadgrid">
-              <LiveSquad name={h.n} side="home" teamCode={m.h} onOpen={onOpenPlayer} />
-              <LiveSquad name={a.n} side="away" teamCode={m.a} onOpen={onOpenPlayer} />
-            </div>
-            <div className="scope">Squads and lineups come live from ESPN; player headshots from API-Football. Tap any player for their profile.</div>
-          </div>
-
-          <div className="block">
-            <Lbl tag={<Tag tone="verified">Verified</Tag>}>Marquee players</Lbl>
-            <div className="pcols">
-              <div className="pcol home"><h4>{h.f} {h.n}</h4>{h.players.map((p, i) => <MarqueeCard p={p} key={i} />)}</div>
-              <div className="pcol away"><h4>{a.f} {a.n}</h4>{a.players.map((p, i) => <MarqueeCard p={p} key={i} />)}</div>
-            </div>
-          </div>
+        {/* Mobile-only sticky close bar */}
+        <div className="mclose-bar">
+          <button className="mclose-btn" onClick={onClose}>✕ Close</button>
         </div>
       </div>
     </div>
@@ -975,10 +1415,36 @@ export default function MatchExplorer({ T, M }) {
   const playerRef = useRef(null);
   playerRef.current = player;
 
+  // Batch score state: keyed by "homeNorm-awayNorm" → { status, statusLabel, homeScore, awayScore }
+  const [scoreMap, setScoreMap] = useState({});
+
+  useEffect(() => {
+    // Fetch scores once per unique fixture date; only for dates up to today.
+    const todayStr = new Date().toISOString().slice(0, 10).replace(/-/g, '');
+    const dates = [...new Set(M.map((m) => fixtureDate(m)).filter(Boolean))];
+    let cancelled = false;
+    dates.forEach(async (date) => {
+      if (date > todayStr) return; // skip future dates
+      try {
+        const r = await fetch(`/api/scores?date=${date}`);
+        const d = await r.json();
+        if (cancelled) return;
+        const newEntries = {};
+        for (const s of d.scores || []) {
+          newEntries[`${s.homeName}-${s.awayName}`] = s;
+        }
+        if (Object.keys(newEntries).length > 0) {
+          setScoreMap((prev) => ({ ...prev, ...newEntries }));
+        }
+      } catch { /* scores are optional */ }
+    });
+    return () => { cancelled = true; };
+  }, [M]);
+
   useEffect(() => {
     const onKey = (e) => {
       if (e.key !== 'Escape') return;
-      if (playerRef.current) setPlayer(null); // close the player profile first
+      if (playerRef.current) setPlayer(null);
       else setOpen(null);
     };
     window.addEventListener('keydown', onKey);
@@ -1003,9 +1469,18 @@ export default function MatchExplorer({ T, M }) {
               const i = M.indexOf(m);
               const h = T[m.h], a = T[m.a];
               const fav = m.fav === 'h' ? h : m.fav === 'a' ? a : null;
+              const scoreKey = `${resolveScoreNorm(h.n)}-${resolveScoreNorm(a.n)}`;
+              const score = scoreMap[scoreKey];
               return (
                 <button className="match" key={i} onClick={() => setOpen(i)}>
-                  <div className="kick"><div className="t">{m.t}</div><div className="z">{m.z}</div></div>
+                  {score ? (
+                    <div className={`kick kick-result kick-${score.status}`}>
+                      <div className="kick-ft">{score.statusLabel}</div>
+                      <div className="kick-score">{score.homeScore}<span className="kick-sep">–</span>{score.awayScore}</div>
+                    </div>
+                  ) : (
+                    <div className="kick"><div className="t">{m.t}</div><div className="z">{m.z}</div></div>
+                  )}
                   <div className="fixture">
                     <div className="grp">Group {m.grp}</div>
                     <div className="teams">
@@ -1026,7 +1501,13 @@ export default function MatchExplorer({ T, M }) {
           </div>
         );
       })}
-      {open !== null && <MatchDetail m={M[open]} T={T} onClose={closeMatch} onOpenPlayer={openPlayer} />}
+      {open !== null && (() => {
+        const om = M[open];
+        const oh = T[om.h], oa = T[om.a];
+        const scoreKey = `${resolveScoreNorm(oh?.n)}-${resolveScoreNorm(oa?.n)}`;
+        const hasResult = !!(scoreMap[scoreKey]);
+        return <MatchDetail m={om} T={T} onClose={closeMatch} onOpenPlayer={openPlayer} hasResult={hasResult} />;
+      })()}
       {player && <PlayerModal id={player.id} name={player.name} teamCode={player.teamCode} photo={player.photo} onClose={() => setPlayer(null)} />}
     </section>
   );
