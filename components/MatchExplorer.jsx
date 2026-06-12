@@ -25,18 +25,28 @@ const HEADSHOT = (id) => `https://a.espncdn.com/i/headshots/soccer/players/full/
 // Byline for the "My Thoughts" tactical column; change this to your name.
 const AUTHOR = "Ovais's Analysis";
 
-// Client-side alias: maps static team name norms → ESPN-equivalent norms so the
-// scores lookup (which comes back in ESPN norms) matches correctly.
-const SCORE_ALIAS = { korearepublic: 'southkorea', drcongo: 'congodr' };
-function resolveScoreNorm(name) { const n = _pn(name); return SCORE_ALIAS[n] || n; }
+// The server's getScoreboard already converts ESPN names back to static-data keys
+// (e.g. ESPN "South Korea" → "korearepublic") so the client just normalises the
+// static name and it matches the score map key directly.
+function resolveScoreNorm(name) { return _pn(name); }
 
 // Match an ESPN full name to the API-Football photo map (keyed by initial+surname).
 const _pn = (s) => (s || '').toLowerCase().normalize('NFD').replace(/[^a-z]/g, '');
 function photoKeys(name) {
   const t = (name || '').trim().split(/\s+/);
   const last = _pn(t[t.length - 1]);
-  const init = _pn(t[0]).charAt(0);
-  return [init + ':' + last, 'L:' + last];
+  const first = _pn(t[0]);
+  const init = first.charAt(0);
+  const keys = [init + ':' + last, 'L:' + last];
+  // Some sources (API-Football) store names in reversed order vs ESPN (e.g. "Heung-min Son"
+  // vs ESPN's "Son Heung-min"). Try the reversed-order key so we don't miss those players.
+  if (t.length >= 2) {
+    const revInit = last.charAt(0);
+    const revLast = first;
+    const revKey = revInit + ':' + revLast;
+    if (!keys.includes(revKey)) keys.push(revKey);
+  }
+  return keys;
 }
 // Relative freshness, computed once on render.
 function timeAgo(iso) {
@@ -96,7 +106,8 @@ function Tot({ label, hv, av, hw, aw }) {
   );
 }
 
-function MarqueeCard({ p }) {
+function MarqueeCard({ p, photo }) {
+  const [imgErr, setImgErr] = useState(false);
   let wc = null;
   if (p.wc) {
     const total = Object.values(p.wc).reduce((s, n) => s + n, 0);
@@ -112,10 +123,19 @@ function MarqueeCard({ p }) {
   } else if (p.debutStar) {
     wc = <div className="wc"><span className="debutbadge">★ First World Cup</span></div>;
   }
+  const showPhoto = photo && !imgErr;
+  const initial = (p.nm || '?').charAt(0).toUpperCase();
   return (
     <div className="player">
-      <div className="nm"><b>{p.nm}</b><span className="pos">{p.pos}</span></div>
-      <div className="club">{p.club}</div>
+      <div className="player-avatar-row">
+        {showPhoto
+          ? <img className="player-headshot" src={photo} alt="" loading="lazy" onError={() => setImgErr(true)} />
+          : <span className="player-headshot-fallback">{initial}</span>}
+        <div>
+          <div className="nm"><b>{p.nm}</b><span className="pos">{p.pos}</span></div>
+          <div className="club">{p.club}</div>
+        </div>
+      </div>
       {wc}
       {p.note && <div className="pnote">{p.note}</div>}
     </div>
@@ -147,11 +167,13 @@ function PlayerRow({ player, side, photo, onOpen }) {
 }
 
 function LiveSquad({ name, side, teamCode, onOpen }) {
-  const [data, setData] = useState(null);
-  const [err, setErr] = useState(null);
-  const [photos, setPhotos] = useState({});
+  const [data, setData]   = useState(null);
+  const [err, setErr]     = useState(null);
+  const [afPhotos, setAfPhotos] = useState({});
+
   useEffect(() => {
     let cancelled = false;
+    // Fetch squad (ESPN)
     (async () => {
       try {
         const r = await fetch(`/api/squad?team=${encodeURIComponent(name)}`);
@@ -161,19 +183,27 @@ function LiveSquad({ name, side, teamCode, onOpen }) {
         if (!cancelled) setErr(String(e));
       }
     })();
+    // Fetch API-Football photos (primary source)
     (async () => {
       try {
         const r = await fetch(`/api/photos?team=${encodeURIComponent(name)}`);
         const d = await r.json();
-        if (!cancelled && d.photos) setPhotos(d.photos);
-      } catch { /* photos are an optional enhancement */ }
+        if (!cancelled && d.photos) setAfPhotos(d.photos);
+      } catch { /* photos are optional */ }
     })();
     return () => { cancelled = true; };
   }, [name]);
 
   const players = data?.players ?? [];
   const byPos = POS_ORDER.map((pos) => [pos, players.filter((p) => p.position === pos)]);
-  const photoFor = (nm) => { const [a, b] = photoKeys(nm); return photos[a] || photos[b] || null; };
+
+  // API-Football photo (primary) → ESPN headshot (fallback)
+  const photoFor = (p) => {
+    const keys = photoKeys(p.name);
+    for (const k of keys) { if (afPhotos[k]) return afPhotos[k]; }
+    return p.id ? HEADSHOT(p.id) : null;
+  };
+
   const open = (id, nm, ph) => onOpen(id, nm, teamCode, ph);
   return (
     <div className={`sqcol ${side}`}>
@@ -185,7 +215,7 @@ function LiveSquad({ name, side, teamCode, onOpen }) {
         list.length ? (
           <div key={pos}>
             <div className="poslabel">{pos}s</div>
-            {list.map((p) => <PlayerRow key={p.id} player={p} side={side} photo={photoFor(p.name)} onOpen={open} />)}
+            {list.map((p) => <PlayerRow key={p.id} player={p} side={side} photo={photoFor(p)} onOpen={open} />)}
           </div>
         ) : null
       )}
@@ -725,7 +755,16 @@ function Watchlist({ wl }) {
 }
 
 /* ---------- player spotlight (editorial cards) ---------- */
-function PlayerSpotlight({ spotlight, m, T }) {
+function SpotAvatar({ name, side, photo }) {
+  const [bad, setBad] = useState(false);
+  const initial = (name || '?').charAt(0).toUpperCase();
+  if (photo && !bad) {
+    return <img className={`spotavatar spotavatar-photo ${side}`} src={photo} alt="" loading="lazy" onError={() => setBad(true)} />;
+  }
+  return <div className={`spotavatar ${side}`}>{initial}</div>;
+}
+
+function PlayerSpotlight({ spotlight, m, T, photoFor }) {
   if (!spotlight || spotlight.length === 0) return null;
   return (
     <div className="block">
@@ -734,11 +773,11 @@ function PlayerSpotlight({ spotlight, m, T }) {
         {spotlight.map((p, i) => {
           const side = p.code === m.h ? 'home' : 'away';
           const team = T?.[p.code]?.n;
-          const initial = (p.name || '?').charAt(0).toUpperCase();
+          const photo = photoFor ? photoFor(p.name) : null;
           return (
             <article className={`spotcard spotcard-${side}`} key={i}>
               <div className="spothead">
-                <div className={`spotavatar ${side}`}>{initial}</div>
+                <SpotAvatar name={p.name} side={side} photo={photo} />
                 <div>
                   <div className="spotname">{p.name}</div>
                   <div className="spotrole">{[p.role, team].filter(Boolean).join(' · ')}</div>
@@ -1075,6 +1114,15 @@ function MatchTeamStatsGrouped({ teamStats, h, a, homeId, awayId }) {
   );
 }
 
+function PlstAvatar({ photo, name }) {
+  const [bad, setBad] = useState(false);
+  const initial = (name || '?').charAt(0).toUpperCase();
+  if (photo && !bad) {
+    return <img className="plst-avatar" src={photo} alt="" loading="lazy" onError={() => setBad(true)} />;
+  }
+  return <span className="plst-avatar plst-avatar-fb">{initial}</span>;
+}
+
 // Full player stat table for finished/live matches — one row per player.
 function PostMatchLineupStats({ result, h, a }) {
   if (!result || (result.status !== 'final' && result.status !== 'live')) return null;
@@ -1109,7 +1157,8 @@ function PostMatchLineupStats({ result, h, a }) {
       </div>
       <div className="plst-tbl">
         <div className="plst-tbl-hd">
-          <span /> {/* jersey column — no header label */}
+          <span /> {/* jersey */}
+          <span /> {/* photo */}
           <span className="plst-hd-name">Player</span>
           {COLS.map((c) => (
             <span key={c.key} className="plst-hd-stat" title={c.title}>{c.lbl}</span>
@@ -1124,6 +1173,7 @@ function PostMatchLineupStats({ result, h, a }) {
                 {divider && <div className="plst-divider">— substitutes —</div>}
                 <div className={`plst-row ${!p.starter ? 'plst-sub' : ''} ${highlight}`}>
                   <span className="plst-jsy">{p.jersey}</span>
+                  <PlstAvatar photo={p.photo} name={p.shortName || p.name} />
                   <span className="plst-name">
                     {p.subbedIn && <span className="plst-arrow up" title="Came on">↑</span>}
                     {p.subbedOut && <span className="plst-arrow dn" title="Subbed off">↓</span>}
@@ -1144,9 +1194,10 @@ function PostMatchLineupStats({ result, h, a }) {
     </div>
   );
 
+  const isLiveStats = result.status === 'live';
   return (
     <div className="block">
-      <Lbl tag={<Tag tone="official">FT · ESPN</Tag>}>Player performances</Lbl>
+      <Lbl tag={<Tag tone={isLiveStats ? 'live' : 'official'}>{isLiveStats ? 'Live · ESPN' : 'FT · ESPN'}</Tag>}>Player performances</Lbl>
       <div className="plst-wrap">
         <TeamTable players={homePlayers} team={h} side="home" />
         <TeamTable players={awayPlayers} team={a} side="away" />
@@ -1188,18 +1239,29 @@ function PlayerStatsRow({ player, stats, events }) {
   );
 }
 
-function MatchResultPanel({ home, away, date, h, a, result, setResult }) {
+function MatchResultPanel({ home, away, date, result, setResult }) {
   useEffect(() => {
     if (!date) return;
     let cancelled = false;
-    (async () => {
+    let timer = null;
+
+    async function fetchResult() {
       try {
         const r = await fetch(`/api/result?home=${encodeURIComponent(home)}&away=${encodeURIComponent(away)}&date=${date}`);
         const d = await r.json();
-        if (!cancelled && !d.error) setResult(d);
+        if (!cancelled && !d.error) {
+          setResult(d);
+          // Keep polling every 30 s while live; back off to 120 s once final
+          if (!cancelled) {
+            const interval = d.status === 'live' ? 30000 : d.status === 'final' ? 120000 : 60000;
+            timer = setTimeout(fetchResult, interval);
+          }
+        }
       } catch { /* result enrichment is optional */ }
-    })();
-    return () => { cancelled = true; };
+    }
+
+    fetchResult();
+    return () => { cancelled = true; clearTimeout(timer); };
   }, [home, away, date]);
   return null; // data-only component; rendering happens in MatchDetail
 }
@@ -1212,6 +1274,61 @@ function MatchDetail({ m, T, onClose, onOpenPlayer, hasResult }) {
   const [result, setResult] = useState(null);
   const date = fixtureDate(m);
 
+  // Two-layer photo map for both teams:
+  //  1. API-Football (primary) — covers ~90% of national team players
+  //  2. ESPN HEADSHOT by ID (fallback) — covers major-league players
+  // Both are keyed by normalised player name so any component can look up
+  // a headshot just from the player's display name.
+  const [afPhotoMap, setAfPhotoMap]   = useState({}); // API-Football: key → url
+  const [espnPhotoMap, setEspnPhotoMap] = useState({}); // ESPN: normName → url
+
+  useEffect(() => {
+    let cancelled = false;
+    [h.n, a.n].forEach(async (teamName) => {
+      // Layer 1: API-Football photos (primary)
+      try {
+        const r = await fetch(`/api/photos?team=${encodeURIComponent(teamName)}`);
+        const d = await r.json();
+        if (!cancelled && d.photos && Object.keys(d.photos).length > 0) {
+          setAfPhotoMap((prev) => ({ ...prev, ...d.photos }));
+        }
+      } catch { /* optional */ }
+
+      // Layer 2: ESPN squad IDs (fallback)
+      try {
+        const r = await fetch(`/api/squad?team=${encodeURIComponent(teamName)}`);
+        const d = await r.json();
+        if (cancelled) return;
+        const entries = {};
+        for (const p of d.players || []) {
+          if (!p.id || !p.name) continue;
+          const url = HEADSHOT(p.id);
+          const base = _pn(p.name);
+          entries[base] = url;
+          const parts = p.name.trim().split(/\s+/);
+          const surn = _pn(parts[parts.length - 1]);
+          if (surn && surn !== base && !entries[surn]) entries[surn] = url;
+        }
+        setEspnPhotoMap((prev) => ({ ...prev, ...entries }));
+      } catch { /* optional */ }
+    });
+    return () => { cancelled = true; };
+  }, [h.n, a.n]);
+
+  // Resolve a headshot for any player name. API-Football first, ESPN fallback.
+  const matchPhotoFor = (name) => {
+    if (!name) return null;
+    // Try all photoKey variants against the API-Football map first
+    const keys = photoKeys(name);
+    for (const k of keys) { if (afPhotoMap[k]) return afPhotoMap[k]; }
+    // Fall back to ESPN by normalised full name, surname, or reversed-order name
+    const parts = name.trim().split(/\s+/);
+    const full     = _pn(name);
+    const surn     = _pn(parts[parts.length - 1]);
+    const reversed = _pn([...parts].reverse().join(' '));
+    return espnPhotoMap[full] || espnPhotoMap[surn] || espnPhotoMap[reversed] || null;
+  };
+
   useEffect(() => {
     document.body.style.overflow = 'hidden';
     return () => { document.body.style.overflow = ''; };
@@ -1222,6 +1339,15 @@ function MatchDetail({ m, T, onClose, onOpenPlayer, hasResult }) {
   // Initialise to 'report' immediately if the scoreMap already shows a result for this match.
   const [tab, setTab] = useState(() => hasResult ? 'report' : 'preview');
   const activeTab = tab;
+
+  // Auto-switch to the report tab the moment live data arrives while the modal is open.
+  const prevLiveRef = useRef(false);
+  useEffect(() => {
+    if (isFinalOrLive && !prevLiveRef.current) {
+      setTab('report');
+    }
+    prevLiveRef.current = !!isFinalOrLive;
+  }, [isFinalOrLive]);
 
   return (
     <div className="scrim" onClick={(e) => e.target === e.currentTarget && onClose()}>
@@ -1260,41 +1386,43 @@ function MatchDetail({ m, T, onClose, onOpenPlayer, hasResult }) {
         </div>
 
         <div className="mbody">
-          {/* Silently fetch the match result in the background */}
-          <MatchResultPanel home={h.n} away={a.n} date={date} h={h} a={a} result={result} setResult={setResult} />
+          {/* Silently fetch the match result in the background — auto-polls while live */}
+          <MatchResultPanel home={h.n} away={a.n} date={date} result={result} setResult={setResult} />
 
           {/* ── MATCH REPORT TAB ── */}
           {activeTab === 'report' && (
             <>
               {isFinalOrLive ? (
                 <>
-                  {/* Result verdict — clean: just the winner + call outcome */}
-                  <div className="block">
-                    <div className="verdictbox">
-                      <div className="stamp">◆ Result</div>
-                      <div className="pick" style={{ fontSize: 22 }}>
-                        {parseInt(result.homeScore, 10) > parseInt(result.awayScore, 10)
-                          ? <><span className="flag">{h.f}</span>{h.n} win</>
-                          : parseInt(result.awayScore, 10) > parseInt(result.homeScore, 10)
-                          ? <><span className="flag">{a.f}</span>{a.n} win</>
-                          : <>Draw</>}
-                        <span className="cf high" style={{ fontSize: 10 }}>Final</span>
-                      </div>
-                      <CallOutcome call={ed.call} fav={m.fav} result={result} />
-                    </div>
-                  </div>
-
-                  {/* FT scoreline + events timeline */}
+                  {/* Score / status hero — scoreline + events timeline */}
                   <MatchScoreHero h={h} a={a} result={result} />
 
-                  {/* Man of the Match */}
-                  {result.motm && (
+                  {/* Result verdict box — only show settled language when actually final */}
+                  {result.status === 'final' && (
+                    <div className="block">
+                      <div className="verdictbox">
+                        <div className="stamp">◆ Full-time result</div>
+                        <div className="pick" style={{ fontSize: 22 }}>
+                          {parseInt(result.homeScore, 10) > parseInt(result.awayScore, 10)
+                            ? <><span className="flag">{h.f}</span>{h.n} win</>
+                            : parseInt(result.awayScore, 10) > parseInt(result.homeScore, 10)
+                            ? <><span className="flag">{a.f}</span>{a.n} win</>
+                            : <>Draw</>}
+                          <span className="cf high" style={{ fontSize: 10 }}>Full time</span>
+                        </div>
+                        <CallOutcome call={ed.call} fav={m.fav} result={result} />
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Man of the Match — only meaningful at full time */}
+                  {result.status === 'final' && result.motm && (
                     <MotmCard motm={result.motm} homeId={result.homeId} awayId={result.awayId} h={h} a={a} />
                   )}
 
                   {/* Formation & lineups */}
                   <div className="block">
-                    <Lbl tag={<Tag tone="official">FT · ESPN</Tag>}>Formation & lineups</Lbl>
+                    <Lbl tag={<Tag tone={result.status === 'final' ? 'official' : 'live'}>{result.status === 'final' ? 'FT · ESPN' : 'Live · ESPN'}</Tag>}>Formation & lineups</Lbl>
                     <ExpectedOrOfficialLineups
                       home={h.n} away={a.n} homeCode={m.h} awayCode={m.a}
                       homePlayers={h.players} awayPlayers={a.players} date={date} onOpen={onOpenPlayer}
@@ -1346,7 +1474,7 @@ function MatchDetail({ m, T, onClose, onOpenPlayer, hasResult }) {
               <GroupContext gc={ed.groupContext} />
               {m.take && <MyThoughts take={m.take} />}
               <WatchFor items={ed.watch} custom={ed.watchIsCustom} flip={ed.flip} />
-              <PlayerSpotlight spotlight={ed.spotlight} m={m} T={T} />
+              <PlayerSpotlight spotlight={ed.spotlight} m={m} T={T} photoFor={matchPhotoFor} />
 
               <div className="block">
                 <Lbl>Tale of the tape</Lbl>
@@ -1391,8 +1519,8 @@ function MatchDetail({ m, T, onClose, onOpenPlayer, hasResult }) {
               <div className="block">
                 <Lbl tag={<Tag tone="verified">Verified</Tag>}>Marquee players</Lbl>
                 <div className="pcols">
-                  <div className="pcol home"><h4>{h.f} {h.n}</h4>{h.players.map((p, i) => <MarqueeCard p={p} key={i} />)}</div>
-                  <div className="pcol away"><h4>{a.f} {a.n}</h4>{a.players.map((p, i) => <MarqueeCard p={p} key={i} />)}</div>
+                  <div className="pcol home"><h4>{h.f} {h.n}</h4>{h.players.map((p, i) => <MarqueeCard p={p} key={i} photo={matchPhotoFor(p.nm)} />)}</div>
+                  <div className="pcol away"><h4>{a.f} {a.n}</h4>{a.players.map((p, i) => <MarqueeCard p={p} key={i} photo={matchPhotoFor(p.nm)} />)}</div>
                 </div>
               </div>
             </>
@@ -1419,26 +1547,36 @@ export default function MatchExplorer({ T, M }) {
   const [scoreMap, setScoreMap] = useState({});
 
   useEffect(() => {
-    // Fetch scores once per unique fixture date; only for dates up to today.
     const todayStr = new Date().toISOString().slice(0, 10).replace(/-/g, '');
     const dates = [...new Set(M.map((m) => fixtureDate(m)).filter(Boolean))];
     let cancelled = false;
-    dates.forEach(async (date) => {
-      if (date > todayStr) return; // skip future dates
+    const timers = [];
+
+    async function fetchScoresForDate(date) {
+      if (date > todayStr) return;
       try {
         const r = await fetch(`/api/scores?date=${date}`);
         const d = await r.json();
         if (cancelled) return;
         const newEntries = {};
+        let hasLive = false;
         for (const s of d.scores || []) {
           newEntries[`${s.homeName}-${s.awayName}`] = s;
+          if (s.status === 'live') hasLive = true;
         }
         if (Object.keys(newEntries).length > 0) {
           setScoreMap((prev) => ({ ...prev, ...newEntries }));
         }
+        // Poll every 30 s while any match on this date is live, else 120 s
+        if (!cancelled) {
+          const interval = hasLive ? 30000 : 120000;
+          timers.push(setTimeout(() => fetchScoresForDate(date), interval));
+        }
       } catch { /* scores are optional */ }
-    });
-    return () => { cancelled = true; };
+    }
+
+    dates.forEach((date) => fetchScoresForDate(date));
+    return () => { cancelled = true; timers.forEach(clearTimeout); };
   }, [M]);
 
   useEffect(() => {

@@ -157,6 +157,9 @@ header.top{position:sticky;top:0;z-index:30;border-bottom:1px solid var(--line);
 .pcol.home h4{color:var(--teal)} .pcol.away h4{color:var(--coral)}
 .player{border:1px solid var(--line);border-radius:var(--r);padding:13px 15px;margin-bottom:11px;background:var(--ink);transition:border-color .16s}
 .player:hover{border-color:var(--line-2)}
+.player-avatar-row{display:flex;align-items:center;gap:12px;margin-bottom:2px}
+.player-headshot{width:48px;height:48px;border-radius:50%;object-fit:cover;object-position:top center;flex:none;border:1.5px solid var(--line);background:var(--ink-3)}
+.player-headshot-fallback{width:48px;height:48px;border-radius:50%;flex:none;display:grid;place-items:center;font-family:var(--display);font-weight:700;font-size:18px;color:var(--mute);background:radial-gradient(circle at 32% 28%,var(--line),var(--ink-3));border:1.5px solid var(--line)}
 .player .nm{display:flex;justify-content:space-between;align-items:baseline;gap:8px}
 .player .nm b{font-size:15px;font-weight:600;letter-spacing:-.01em}
 .player .nm .pos{font-family:var(--sans);font-size:9.5px;letter-spacing:.08em;color:var(--mute-2);text-transform:uppercase;font-weight:600}
@@ -350,9 +353,10 @@ header.top{position:sticky;top:0;z-index:30;border-bottom:1px solid var(--line);
 .spotcard-home::before{background:var(--teal)}
 .spotcard-away::before{background:var(--coral)}
 .spothead{display:flex;align-items:center;gap:13px;margin-bottom:13px}
-.spotavatar{width:42px;height:42px;border-radius:50%;display:grid;place-items:center;font-family:var(--display);font-weight:700;font-size:16px;flex:none;background:radial-gradient(circle at 32% 28%,var(--line),var(--ink-3));border:1px solid var(--line)}
+.spotavatar{width:48px;height:48px;border-radius:50%;display:grid;place-items:center;font-family:var(--display);font-weight:700;font-size:16px;flex:none;background:radial-gradient(circle at 32% 28%,var(--line),var(--ink-3));border:1px solid var(--line)}
 .spotavatar.home{color:var(--teal);background:radial-gradient(circle at 32% 28%,rgba(79,224,204,.18),var(--ink-3));border-color:rgba(79,224,204,.32)}
 .spotavatar.away{color:var(--coral);background:radial-gradient(circle at 32% 28%,rgba(255,122,107,.18),var(--ink-3));border-color:rgba(255,122,107,.32)}
+.spotavatar-photo{object-fit:cover;object-position:top center;border:2px solid var(--line)}
 .spotname{font-family:var(--display);font-size:17px;font-weight:600;letter-spacing:-.015em;color:var(--bone)}
 .spotrole{font-family:var(--sans);font-size:11px;color:var(--mute);margin-top:3px;letter-spacing:.02em}
 .spotsec{margin-top:14px}
@@ -521,11 +525,13 @@ header.top{position:sticky;top:0;z-index:30;border-bottom:1px solid var(--line);
 .plst-teamhd{display:flex;align-items:center;gap:6px;font-family:var(--sans);font-size:12px;font-weight:700;color:var(--bone);margin-bottom:8px;letter-spacing:-.01em}
 .plst-flag{font-size:16px}
 .plst-tbl{font-family:var(--mono,monospace);font-size:11px}
-.plst-tbl-hd{display:grid;grid-template-columns:18px 1fr repeat(7,22px);gap:2px;align-items:center;padding:0 0 4px 0;border-bottom:1px solid var(--line);color:var(--mute-2);font-weight:700}
+.plst-tbl-hd{display:grid;grid-template-columns:18px 26px 1fr repeat(7,22px);gap:2px;align-items:center;padding:0 0 4px 0;border-bottom:1px solid var(--line);color:var(--mute-2);font-weight:700}
 .plst-hd-name{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:9.5px;letter-spacing:.04em;text-transform:uppercase}
 .plst-hd-stat{text-align:center;font-size:9.5px;letter-spacing:.04em;text-transform:uppercase}
 .plst-rows{display:flex;flex-direction:column}
-.plst-row{display:grid;grid-template-columns:18px 1fr repeat(7,22px);gap:2px;align-items:center;padding:3px 0;border-bottom:1px solid rgba(255,255,255,.04)}
+.plst-row{display:grid;grid-template-columns:18px 26px 1fr repeat(7,22px);gap:2px;align-items:center;padding:3px 0;border-bottom:1px solid rgba(255,255,255,.04)}
+.plst-avatar{width:24px;height:24px;border-radius:50%;object-fit:cover;object-position:top center;flex:none}
+.plst-avatar-fb{display:grid;place-items:center;font-family:var(--sans);font-size:9px;font-weight:700;color:var(--mute-2);background:var(--ink-3);border:1px solid var(--line)}
 .plst-row:last-child{border-bottom:0}
 .plst-sub .plst-name,.plst-sub .plst-jsy{opacity:.55}
 .plst-jsy{font-size:10px;color:var(--mute-2);font-weight:600;text-align:center}
@@ -549,7 +555,7 @@ header.top{position:sticky;top:0;z-index:30;border-bottom:1px solid var(--line);
   .mstat-row{grid-template-columns:36px 1fr 36px;gap:7px}
   .mstat-hv,.mstat-av{font-size:12px}
   .plst-wrap{grid-template-columns:1fr;gap:14px}
-  .plst-tbl-hd,.plst-row{grid-template-columns:18px 1fr repeat(7,20px)}
+  .plst-tbl-hd,.plst-row{grid-template-columns:18px 24px 1fr repeat(7,20px)}
 }
 
 /* ---- tournament leaders ---- */

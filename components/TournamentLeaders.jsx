@@ -175,10 +175,23 @@ export default function TournamentLeaders({ limit = 3, onSeeAll, fullPage = fals
   const [data, setData] = useState(null);
 
   useEffect(() => {
-    fetch('/api/leaders')
-      .then((r) => r.json())
-      .then(setData)
-      .catch(() => {});
+    let cancelled = false;
+    let timer = null;
+
+    async function fetchLeaders() {
+      try {
+        const r = await fetch('/api/leaders');
+        const d = await r.json();
+        if (!cancelled) {
+          setData(d);
+          // Poll every 60 s while the tournament is live so numbers update automatically.
+          timer = setTimeout(fetchLeaders, 60000);
+        }
+      } catch { /* leaders are optional */ }
+    }
+
+    fetchLeaders();
+    return () => { cancelled = true; clearTimeout(timer); };
   }, []);
 
   if (!data) return null;
