@@ -630,6 +630,11 @@ header.top{position:sticky;top:0;z-index:30;border-bottom:1px solid var(--line);
 footer.foot{border-top:1px solid var(--line);margin-top:64px;padding:30px 0 60px;background:linear-gradient(180deg,transparent,rgba(0,0,0,.15))}
 footer.foot p{font-family:var(--sans);font-size:11.5px;color:var(--mute-2);max-width:84ch;line-height:1.8}
 footer.foot b{color:var(--mute);font-weight:600}
+.foot-credit{display:flex;align-items:center;gap:12px;margin-bottom:20px;padding-bottom:20px;border-bottom:1px solid var(--line)}
+.foot-built{font-family:var(--sans);font-size:11px;letter-spacing:.1em;text-transform:uppercase;color:var(--mute-2);font-weight:600}
+.foot-name{font-family:var(--display);font-size:16px;font-weight:700;letter-spacing:-.02em;color:var(--bone)}
+.foot-link{font-family:var(--sans);font-size:11px;color:var(--teal);text-decoration:none;letter-spacing:.04em;border:1px solid rgba(79,224,204,.3);border-radius:var(--pill);padding:3px 10px;transition:background .15s,border-color .15s;margin-left:auto}
+.foot-link:hover{background:rgba(79,224,204,.08);border-color:rgba(79,224,204,.6)}
 
 @media(max-width:640px){
   .wrap{padding:0 16px}

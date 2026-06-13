@@ -85,6 +85,16 @@ export default function Page() {
 
       <footer className="foot">
         <div className="wrap">
+          <div className="foot-credit">
+            <span className="foot-built">Built by</span>
+            <span className="foot-name">Muhammad Ovais Yusuf</span>
+            <a
+              className="foot-link"
+              href="https://www.linkedin.com/in/muhammadovaisyusuf/"
+              target="_blank"
+              rel="noopener noreferrer"
+            >LinkedIn ↗</a>
+          </div>
           <p><b>Data.</b> Fixtures, kickoff times (US Eastern), venues and verdicts are hand-verified as of June 2026. Squads, starting lineups and player profiles come live from ESPN&apos;s public feed, with no API key and no quota. Lineups appear on the pitch roughly an hour before kickoff; until then, each match shows the full squad.</p>
         </div>
       </footer>
