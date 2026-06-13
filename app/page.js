@@ -1,5 +1,5 @@
 'use client';
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { T, M } from '../lib/staticData';
 import { TOURNAMENT_THEMES } from '../lib/editorial';
 import MatchExplorer from '../components/MatchExplorer';
@@ -25,6 +25,21 @@ function ThemeCard({ t }) {
 export default function Page() {
   const [statsOpen, setStatsOpen] = useState(false);
   const [activeMainTab, setActiveMainTab] = useState('matchday');
+  const [theme, setTheme] = useState('light');
+
+  // Sync with localStorage on mount, respecting any previously saved preference
+  useEffect(() => {
+    const saved = localStorage.getItem('wc26-theme') || 'light';
+    setTheme(saved);
+    document.documentElement.setAttribute('data-theme', saved);
+  }, []);
+
+  function toggleTheme() {
+    const next = theme === 'light' ? 'dark' : 'light';
+    setTheme(next);
+    document.documentElement.setAttribute('data-theme', next);
+    localStorage.setItem('wc26-theme', next);
+  }
 
   return (
     <>
@@ -35,6 +50,9 @@ export default function Page() {
             <div className="sub">Matchday&nbsp;Intelligence</div>
           </div>
           <div className="host">Jun 11 to Jul 19 · <b>USA</b> · <b>CAN</b> · <b>MEX</b></div>
+          <button className="theme-btn" onClick={toggleTheme} aria-label="Toggle colour theme">
+            {theme === 'light' ? '🌙 Dark' : '☀️ Light'}
+          </button>
         </div>
         <div className="tabs" role="tablist" aria-label="Matchday">
           <button className={`tab ${activeMainTab === 'matchday' ? '' : ''}`} role="tab" aria-selected={activeMainTab === 'matchday'} onClick={() => setActiveMainTab('matchday')}>Matchday 1</button>
