@@ -60,7 +60,7 @@ export default function Page() {
           <button className="tab" role="tab" aria-selected={activeMainTab === 'md2'} onClick={() => setActiveMainTab('md2')}>Matchday 2</button>
           <button className="tab" role="tab" disabled title="Unlocks after MD2 results">Matchday 3</button>
           <button className="tab" role="tab" disabled title="Unlocks after the group stage">Knockouts</button>
-          <button className={`tab tab-stats ${activeMainTab === 'standings' ? 'tab-active' : ''}`} role="tab" aria-selected={activeMainTab === 'standings'} onClick={() => setActiveMainTab('standings')}>📊 Standings</button>
+          <button className={`tab tab-stats ${activeMainTab === 'standings' ? 'tab-active' : ''}`} role="tab" aria-selected={activeMainTab === 'standings'} onClick={() => setActiveMainTab('standings')} style={{ marginLeft: 'auto' }}>📊 Standings</button>
           <button className={`tab tab-stats ${activeMainTab === 'stats' ? 'tab-active' : ''}`} role="tab" aria-selected={activeMainTab === 'stats'} onClick={() => setActiveMainTab('stats')}>🏅 Stats</button>
         </div>
       </header>
@@ -70,19 +70,19 @@ export default function Page() {
           <>
             <section className="hero">
               <div className="eyebrow">FIFA World Cup 26 · Matchday 1</div>
-              <h1>Every opening match, read for you.</h1>
-              <p>Open any fixture for the projected result, the tale of the tape, the full squad and every player profile. Starting XIs appear live on a formation pitch the moment they drop. All free.</p>
+              <h1>The tournament opener. Every match, read for you.</h1>
+              <p>Matchday 1 is done. All 24 opening fixtures are wrapped up with results, match reports, lineups and full player stats. Tap any fixture to read the full breakdown of what actually happened.</p>
               <div className="ctx">
-                <div className="pill"><span>Title favourite</span><b>Spain <i>+450</i></b></div>
-                <div className="pill"><span>In the mix</span><b>France +470 · England +650</b></div>
-                <div className="pill"><span>Golden Boot</span><b>Mbapp&#233; <i>+600</i> · Kane +700</b></div>
-                <div className="pill"><span>Format</span><b>48 teams · 12 groups · top 2 + 8 thirds</b></div>
+                <div className="pill"><span>Top scorer</span><b>Haaland <i>2 goals</i></b></div>
+                <div className="pill"><span>Biggest result</span><b>Morocco 2–1 Scotland</b></div>
+                <div className="pill"><span>Already qualified</span><b>Spain · Germany · Norway</b></div>
+                <div className="pill"><span>On the brink</span><b>Korea Republic · Iraq · Curaçao</b></div>
               </div>
             </section>
 
             <section className="themes">
               <div className="themes-hd">
-                <h2>Tournament intelligence</h2>
+                <h2>What the tournament has told us</h2>
                 <div className="rule" />
               </div>
               <div className="themes-grid">

@@ -621,7 +621,7 @@ header.top{position:sticky;top:0;z-index:30;border-bottom:1px solid var(--line);
 @media(max-width:640px){.ldr-grid{grid-template-columns:1fr}.ldr-col{padding:14px 16px}}
 
 /* ---- full stats page ---- */
-.tab-stats{margin-left:auto;background:linear-gradient(135deg,rgba(79,224,204,.15),rgba(243,200,104,.1)) !important;border-color:rgba(79,224,204,.45) !important;color:var(--teal) !important;font-weight:700 !important;letter-spacing:.06em;box-shadow:0 0 12px rgba(79,224,204,.12)}
+.tab-stats{background:linear-gradient(135deg,rgba(79,224,204,.15),rgba(243,200,104,.1)) !important;border-color:rgba(79,224,204,.45) !important;color:var(--teal) !important;font-weight:700 !important;letter-spacing:.06em;box-shadow:0 0 12px rgba(79,224,204,.12)}
 .tab-stats:hover:not([disabled]){background:linear-gradient(135deg,rgba(79,224,204,.25),rgba(243,200,104,.18)) !important;border-color:rgba(79,224,204,.7) !important;box-shadow:0 0 20px rgba(79,224,204,.2);transform:translateY(-1px)}
 .tab-stats[aria-selected="true"]{background:linear-gradient(135deg,rgba(79,224,204,.3),rgba(243,200,104,.2)) !important;border-color:var(--teal) !important;color:var(--teal) !important;box-shadow:0 0 24px rgba(79,224,204,.25)}
 .tab-active{color:var(--bone) !important;border-bottom-color:var(--teal)}
