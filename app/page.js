@@ -23,10 +23,57 @@ function ThemeCard({ t }) {
   );
 }
 
+function useTournamentSnapshot() {
+  const [snap, setSnap] = useState(null);
+
+  useEffect(() => {
+    async function load() {
+      try {
+        const [ldRes, stRes] = await Promise.all([
+          fetch('/api/leaders'),
+          fetch('/api/standings'),
+        ]);
+        const ld = await ldRes.json();
+        const st = await stRes.json();
+
+        // Top scorer
+        const top = ld.scorers?.[0];
+        const topScorer = top
+          ? `${top.shortName || top.name} · ${top.goals} goal${top.goals !== 1 ? 's' : ''}`
+          : null;
+
+        // Already qualified (6 pts from 2 played) and on the brink (0 pts, 2 played)
+        const qualified = [];
+        const brink = [];
+        for (const rows of Object.values(st.groups || {})) {
+          for (const row of rows) {
+            const team = T[row.code];
+            if (!team) continue;
+            if (row.p >= 2 && row.pts === 6) qualified.push(team.n);
+            if (row.p >= 2 && row.pts === 0) brink.push(team.n);
+          }
+        }
+
+        setSnap({
+          topScorer,
+          qualified: qualified.length ? qualified.join(' · ') : null,
+          brink: brink.length ? brink.join(' · ') : null,
+        });
+      } catch {
+        // silently fall back to defaults
+      }
+    }
+    load();
+  }, []);
+
+  return snap;
+}
+
 export default function Page() {
   const [statsOpen, setStatsOpen] = useState(false);
   const [activeMainTab, setActiveMainTab] = useState('matchday');
   const [theme, setTheme] = useState('light');
+  const snap = useTournamentSnapshot();
 
   // Sync with localStorage on mount, respecting any previously saved preference
   useEffect(() => {
@@ -73,10 +120,10 @@ export default function Page() {
               <h1>The tournament opener. Every match, read for you.</h1>
               <p>Matchday 1 is done. All 24 opening fixtures are wrapped up with results, match reports, lineups and full player stats. Tap any fixture to read the full breakdown of what actually happened.</p>
               <div className="ctx">
-                <div className="pill"><span>Top scorer</span><b>Haaland <i>2 goals</i></b></div>
-                <div className="pill"><span>Biggest result</span><b>Morocco 2–1 Scotland</b></div>
-                <div className="pill"><span>Already qualified</span><b>Spain · Germany · Norway</b></div>
-                <div className="pill"><span>On the brink</span><b>Korea Republic · Iraq · Curaçao</b></div>
+                <div className="pill"><span>Top scorer</span><b>{snap?.topScorer ?? 'Loading…'}</b></div>
+                <div className="pill"><span>Biggest result</span><b>Germany 7–1 Curaçao</b></div>
+                {snap?.qualified && <div className="pill"><span>Already qualified</span><b>{snap.qualified}</b></div>}
+                {snap?.brink && <div className="pill"><span>On the brink</span><b>{snap.brink}</b></div>}
               </div>
             </section>
 
