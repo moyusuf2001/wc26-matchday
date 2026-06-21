@@ -1,6 +1,6 @@
 'use client';
 import { useState, useEffect } from 'react';
-import { T, M } from '../lib/staticData';
+import { T, M, M2 } from '../lib/staticData';
 import { TOURNAMENT_THEMES } from '../lib/editorial';
 import MatchExplorer from '../components/MatchExplorer';
 import TournamentLeaders from '../components/TournamentLeaders';
@@ -55,8 +55,8 @@ export default function Page() {
           </button>
         </div>
         <div className="tabs" role="tablist" aria-label="Matchday">
-          <button className={`tab ${activeMainTab === 'matchday' ? '' : ''}`} role="tab" aria-selected={activeMainTab === 'matchday'} onClick={() => setActiveMainTab('matchday')}>Matchday 1</button>
-          <button className="tab" role="tab" disabled title="Unlocks after MD1 results">Matchday 2</button>
+          <button className="tab" role="tab" aria-selected={activeMainTab === 'matchday'} onClick={() => setActiveMainTab('matchday')}>Matchday 1</button>
+          <button className="tab" role="tab" aria-selected={activeMainTab === 'md2'} onClick={() => setActiveMainTab('md2')}>Matchday 2</button>
           <button className="tab" role="tab" disabled title="Unlocks after MD2 results">Matchday 3</button>
           <button className="tab" role="tab" disabled title="Unlocks after the group stage">Knockouts</button>
           <button className={`tab tab-stats ${activeMainTab === 'stats' ? 'tab-active' : ''}`} role="tab" aria-selected={activeMainTab === 'stats'} onClick={() => setActiveMainTab('stats')}>📊 Stats</button>
@@ -92,6 +92,26 @@ export default function Page() {
 
             <p className="scope" style={{ marginTop: 38 }}>
               Projected results blend the betting markets with World Cup pedigree; they are probabilities, not promises. Squads, starting lineups and player profiles are pulled live from ESPN&apos;s public feed; the verdicts, venues and verified career-goal records render instantly, even if the live feed is unavailable.
+            </p>
+          </>
+        )}
+
+        {activeMainTab === 'md2' && (
+          <>
+            <section className="hero">
+              <div className="eyebrow">FIFA World Cup 26 · Matchday 2</div>
+              <h1>Group standings start to crystallize.</h1>
+              <p>Some teams edge toward the Round of 32. Others face must-win situations. Open any fixture for the live score, the match report, and full tactical analysis. Starting XIs appear the moment they drop.</p>
+              <div className="ctx">
+                <div className="pill"><span>Dates</span><b>June 18 <i>–</i> June 23</b></div>
+                <div className="pill"><span>Matches</span><b>24 fixtures · 12 groups</b></div>
+                <div className="pill"><span>Stakes</span><b>Early qualification spots decided</b></div>
+                <div className="pill"><span>Watch</span><b>Haaland · Messi · Son · Mbappé</b></div>
+              </div>
+            </section>
+            <MatchExplorer T={T} M={M2} />
+            <p className="scope" style={{ marginTop: 38 }}>
+              Projected results and editorial analysis reflect pre-match expectations. Live scores and match reports replace the preview automatically once a fixture kicks off.
             </p>
           </>
         )}
