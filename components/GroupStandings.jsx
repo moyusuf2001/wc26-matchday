@@ -90,7 +90,7 @@ export default function GroupStandings() {
 
   useEffect(() => {
     load();
-    const id = setInterval(load, 5 * 60 * 1000); // refresh every 5 min
+    const id = setInterval(load, 60 * 1000); // refresh every 60s during live play
     return () => clearInterval(id);
   }, []);
 
