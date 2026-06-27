@@ -1,6 +1,6 @@
 'use client';
 import { useState, useEffect } from 'react';
-import { T, M, M2 } from '../lib/staticData';
+import { T, M, M2, M3 } from '../lib/staticData';
 import { TOURNAMENT_THEMES } from '../lib/editorial';
 import MatchExplorer from '../components/MatchExplorer';
 import TournamentLeaders from '../components/TournamentLeaders';
@@ -105,7 +105,7 @@ export default function Page() {
         <div className="tabs" role="tablist" aria-label="Matchday">
           <button className="tab" role="tab" aria-selected={activeMainTab === 'matchday'} onClick={() => setActiveMainTab('matchday')}>Matchday 1</button>
           <button className="tab" role="tab" aria-selected={activeMainTab === 'md2'} onClick={() => setActiveMainTab('md2')}>Matchday 2</button>
-          <button className="tab" role="tab" disabled title="Unlocks after MD2 results">Matchday 3</button>
+          <button className="tab" role="tab" aria-selected={activeMainTab === 'md3'} onClick={() => setActiveMainTab('md3')}>Matchday 3</button>
           <button className="tab" role="tab" disabled title="Unlocks after the group stage">Knockouts</button>
           <button className={`tab tab-stats ${activeMainTab === 'standings' ? 'tab-active' : ''}`} role="tab" aria-selected={activeMainTab === 'standings'} onClick={() => setActiveMainTab('standings')} style={{ marginLeft: 'auto' }}>📊 Standings</button>
           <button className={`tab tab-stats ${activeMainTab === 'stats' ? 'tab-active' : ''}`} role="tab" aria-selected={activeMainTab === 'stats'} onClick={() => setActiveMainTab('stats')}>🏅 Stats</button>
@@ -161,6 +161,26 @@ export default function Page() {
             <MatchExplorer T={T} M={M2} />
             <p className="scope" style={{ marginTop: 38 }}>
               Projected results and editorial analysis reflect pre-match expectations. Live scores and match reports replace the preview automatically once a fixture kicks off.
+            </p>
+          </>
+        )}
+
+        {activeMainTab === 'md3' && (
+          <>
+            <section className="hero">
+              <div className="eyebrow">FIFA World Cup 26 · Matchday 3</div>
+              <h1>The group stage finale. Everything on the line.</h1>
+              <p>Both games in every group play simultaneously — the format that produces the most dramatic final day in football. Qualification spots, eliminations and seedings all decided in 24 matches across four days. Live scores and match reports update the moment they drop.</p>
+              <div className="ctx">
+                <div className="pill"><span>Dates</span><b>June 24 to June 29</b></div>
+                <div className="pill"><span>Format</span><b>Both group games simultaneous</b></div>
+                <div className="pill"><span>Match of the round</span><b>Norway vs France</b></div>
+                <div className="pill"><span>Storyline</span><b>Ronaldo needs goals · Spain's real test</b></div>
+              </div>
+            </section>
+            <MatchExplorer T={T} M={M3} />
+            <p className="scope" style={{ marginTop: 38 }}>
+              Live scores and match reports replace the preview automatically once a fixture kicks off. Both games in each group play at the same kickoff time — the drama unfolds simultaneously.
             </p>
           </>
         )}
