@@ -649,7 +649,7 @@ function CallOutcome({ call, fav, result }) {
     <div className="calloutcome">
       <span className="calloutcome-icon">{correct ? '✅' : '❌'}</span>
       <span className="calloutcome-label">
-        My call: <b>{call.label}</b> — <span className={correct ? 'calloutcome-win' : 'calloutcome-miss'}>{correct ? 'Correct' : 'Missed'}</span>
+        My call: <b>{call.label}</b> · <span className={correct ? 'calloutcome-win' : 'calloutcome-miss'}>{correct ? 'Correct' : 'Missed'}</span>
       </span>
     </div>
   );

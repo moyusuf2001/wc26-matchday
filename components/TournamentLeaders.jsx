@@ -98,7 +98,7 @@ function FullStatsPage({ data }) {
       <div className="stats-full-col">
         {activeSection === 'scorers' && (
           <LeaderCol
-            icon="⚽" title="Golden Boot — Top Scorers"
+            icon="⚽" title="Golden Boot: Top Scorers"
             players={data.scorers || []}
             renderStat={(p) => ({ value: p.goals, sub: `${p.shotsOnTarget ?? p.shots ?? 0} SoT` })}
             emptyText="No goals scored yet"
@@ -114,7 +114,7 @@ function FullStatsPage({ data }) {
         )}
         {activeSection === 'keepers' && (
           <LeaderCol
-            icon="🧤" title="Goalkeepers — Saves & Clean Sheets"
+            icon="🧤" title="Goalkeepers: Saves & Clean Sheets"
             players={data.keepers || []}
             renderStat={(p) => ({ value: p.saves, sub: p.cleanSheets > 0 ? `${p.cleanSheets} CS` : `${p.goalsConceded} GC` })}
             emptyText="No keeper stats yet"

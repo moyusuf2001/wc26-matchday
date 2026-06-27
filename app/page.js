@@ -170,7 +170,7 @@ export default function Page() {
             <section className="hero">
               <div className="eyebrow">FIFA World Cup 26 · Matchday 3</div>
               <h1>The group stage finale. Everything on the line.</h1>
-              <p>Both games in every group play simultaneously — the format that produces the most dramatic final day in football. Qualification spots, eliminations and seedings all decided in 24 matches across four days. Live scores and match reports update the moment they drop.</p>
+              <p>Both games in every group play simultaneously, the format that produces the most dramatic final day in football. Qualification spots, eliminations and seedings all decided in 24 matches across four days. Live scores and match reports update the moment they drop.</p>
               <div className="ctx">
                 <div className="pill"><span>Dates</span><b>June 24 to June 29</b></div>
                 <div className="pill"><span>Format</span><b>Both group games simultaneous</b></div>
@@ -180,7 +180,7 @@ export default function Page() {
             </section>
             <MatchExplorer T={T} M={M3} />
             <p className="scope" style={{ marginTop: 38 }}>
-              Live scores and match reports replace the preview automatically once a fixture kicks off. Both games in each group play at the same kickoff time — the drama unfolds simultaneously.
+              Live scores and match reports replace the preview automatically once a fixture kicks off. Both games in each group play at the same kickoff time. The drama unfolds simultaneously.
             </p>
           </>
         )}
