@@ -6,6 +6,7 @@ import MatchExplorer from '../components/MatchExplorer';
 import TournamentLeaders from '../components/TournamentLeaders';
 import GroupStandings from '../components/GroupStandings';
 import KnockoutBracket from '../components/KnockoutBracket';
+import BracketView from '../components/BracketView';
 
 const THEME_TONE = {
   gold: { color: 'var(--gold)', border: 'rgba(243,200,104,.35)', bg: 'rgba(243,200,104,.06)' },
@@ -108,6 +109,7 @@ export default function Page() {
           <button className="tab" role="tab" aria-selected={activeMainTab === 'md2'} onClick={() => setActiveMainTab('md2')}>Matchday 2</button>
           <button className="tab" role="tab" aria-selected={activeMainTab === 'md3'} onClick={() => setActiveMainTab('md3')}>Matchday 3</button>
           <button className={`tab ${activeMainTab === 'knockouts' ? 'tab-active' : ''}`} role="tab" aria-selected={activeMainTab === 'knockouts'} onClick={() => setActiveMainTab('knockouts')}>Knockouts</button>
+          <button className={`tab ${activeMainTab === 'bracket' ? 'tab-active' : ''}`} role="tab" aria-selected={activeMainTab === 'bracket'} onClick={() => setActiveMainTab('bracket')}>Bracket</button>
           <button className={`tab tab-stats ${activeMainTab === 'standings' ? 'tab-active' : ''}`} role="tab" aria-selected={activeMainTab === 'standings'} onClick={() => setActiveMainTab('standings')} style={{ marginLeft: 'auto' }}>📊 Standings</button>
           <button className={`tab tab-stats ${activeMainTab === 'stats' ? 'tab-active' : ''}`} role="tab" aria-selected={activeMainTab === 'stats'} onClick={() => setActiveMainTab('stats')}>🏅 Stats</button>
         </div>
@@ -205,6 +207,22 @@ export default function Page() {
               <p>The group stage is over. 32 teams remain. One game, one chance. Canada have already eliminated South Africa. Scores and results update live the moment they drop.</p>
             </section>
             <KnockoutBracket T={T} KO={KO} />
+          </>
+        )}
+
+        {activeMainTab === 'bracket' && (
+          <>
+            <section className="hero">
+              <div className="eyebrow">FIFA World Cup 26 · Tournament Bracket</div>
+              <h1>The path to glory.</h1>
+              <p>Every knockout game in one view, from the Round of 32 all the way to the Final at MetLife Stadium on July 19. Winners advance automatically as results come in.</p>
+              <div className="ctx">
+                <div className="pill"><span>Rounds</span><b>R32 · R16 · QF · SF · Final</b></div>
+                <div className="pill"><span>Final</span><b>Jul 19 · MetLife Stadium, NJ</b></div>
+                <div className="pill"><span>First result</span><b>Canada 1-0 South Africa</b></div>
+              </div>
+            </section>
+            <BracketView T={T} />
           </>
         )}
 
