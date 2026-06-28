@@ -1,10 +1,11 @@
 'use client';
 import { useState, useEffect } from 'react';
-import { T, M, M2, M3 } from '../lib/staticData';
+import { T, M, M2, M3, KO } from '../lib/staticData';
 import { TOURNAMENT_THEMES } from '../lib/editorial';
 import MatchExplorer from '../components/MatchExplorer';
 import TournamentLeaders from '../components/TournamentLeaders';
 import GroupStandings from '../components/GroupStandings';
+import KnockoutBracket from '../components/KnockoutBracket';
 
 const THEME_TONE = {
   gold: { color: 'var(--gold)', border: 'rgba(243,200,104,.35)', bg: 'rgba(243,200,104,.06)' },
@@ -106,7 +107,7 @@ export default function Page() {
           <button className="tab" role="tab" aria-selected={activeMainTab === 'matchday'} onClick={() => setActiveMainTab('matchday')}>Matchday 1</button>
           <button className="tab" role="tab" aria-selected={activeMainTab === 'md2'} onClick={() => setActiveMainTab('md2')}>Matchday 2</button>
           <button className="tab" role="tab" aria-selected={activeMainTab === 'md3'} onClick={() => setActiveMainTab('md3')}>Matchday 3</button>
-          <button className="tab" role="tab" disabled title="Unlocks after the group stage">Knockouts</button>
+          <button className={`tab ${activeMainTab === 'knockouts' ? 'tab-active' : ''}`} role="tab" aria-selected={activeMainTab === 'knockouts'} onClick={() => setActiveMainTab('knockouts')}>Knockouts</button>
           <button className={`tab tab-stats ${activeMainTab === 'standings' ? 'tab-active' : ''}`} role="tab" aria-selected={activeMainTab === 'standings'} onClick={() => setActiveMainTab('standings')} style={{ marginLeft: 'auto' }}>📊 Standings</button>
           <button className={`tab tab-stats ${activeMainTab === 'stats' ? 'tab-active' : ''}`} role="tab" aria-selected={activeMainTab === 'stats'} onClick={() => setActiveMainTab('stats')}>🏅 Stats</button>
         </div>
@@ -189,10 +190,21 @@ export default function Page() {
           <>
             <section className="hero">
               <div className="eyebrow">FIFA World Cup 26 · Group Stage</div>
-              <h1>Live Group Standings</h1>
-              <p>All 12 groups updated live from official scores. Top two teams from each group advance automatically. The best eight third-placed teams also qualify for the Round of 32.</p>
+              <h1>Final Group Standings</h1>
+              <p>The group stage is complete. 32 teams advance to the Round of 32, with the eight best third-placed teams joining the 12 group winners and 12 runners-up.</p>
             </section>
             <GroupStandings />
+          </>
+        )}
+
+        {activeMainTab === 'knockouts' && (
+          <>
+            <section className="hero">
+              <div className="eyebrow">FIFA World Cup 26 · Knockouts</div>
+              <h1>Round of 32</h1>
+              <p>The group stage is over. 32 teams remain. One game, one chance. Canada have already eliminated South Africa. Scores and results update live the moment they drop.</p>
+            </section>
+            <KnockoutBracket T={T} KO={KO} />
           </>
         )}
 

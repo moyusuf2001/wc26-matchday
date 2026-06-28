@@ -773,3 +773,103 @@ footer.foot b{color:var(--mute);font-weight:600}
   .themes-grid{grid-template-columns:1fr}
 }
 @media(prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
+
+/* ── Knockout Bracket ───────────────────────────────────────────────────────── */
+.ko-wrap { display:flex; flex-direction:column; gap:2rem; padding-bottom:3rem; }
+
+.ko-section-hd {
+  display:flex; align-items:center; gap:.6rem;
+  font-size:1.1rem; font-weight:700; letter-spacing:.03em;
+  color:var(--text); border-bottom:2px solid var(--border);
+  padding-bottom:.5rem; margin-bottom:.25rem;
+}
+.ko-section-badge {
+  display:inline-flex; align-items:center; justify-content:center;
+  padding:.15rem .5rem; border-radius:4px; font-size:.65rem; font-weight:800;
+  letter-spacing:.06em; background:var(--gold); color:#000;
+}
+
+.ko-day-section { display:flex; flex-direction:column; gap:.75rem; }
+.ko-day-hd {
+  font-size:.75rem; font-weight:700; letter-spacing:.07em; text-transform:uppercase;
+  color:var(--mute); padding:.15rem 0;
+}
+
+.ko-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(300px,1fr)); gap:.75rem; }
+
+/* Card */
+.ko-card {
+  background:var(--card); border:1px solid var(--border); border-radius:10px;
+  padding:.85rem 1rem; display:flex; flex-direction:column; gap:.6rem;
+  transition:border-color .2s;
+}
+.ko-card:hover { border-color:var(--gold); }
+.ko-done { border-left:3px solid var(--green,#4caf50); }
+.ko-live { border-left:3px solid var(--coral); animation:pulse-border 2s infinite; }
+@keyframes pulse-border { 0%,100%{border-left-color:var(--coral)} 50%{border-left-color:transparent} }
+
+/* Top row */
+.ko-card-top {
+  display:flex; align-items:center; gap:.5rem; min-height:1.4rem;
+}
+.ko-round-chip {
+  font-size:.6rem; font-weight:800; letter-spacing:.06em;
+  padding:.1rem .4rem; border-radius:3px;
+  background:rgba(255,200,0,.15); color:var(--gold); border:1px solid rgba(255,200,0,.3);
+}
+.ko-status-chip {
+  font-size:.65rem; font-weight:700; padding:.1rem .45rem; border-radius:3px;
+}
+.ko-chip-ft { background:rgba(76,175,80,.15); color:var(--green,#4caf50); border:1px solid rgba(76,175,80,.3); }
+.ko-chip-live { background:rgba(255,111,97,.15); color:var(--coral); border:1px solid rgba(255,111,97,.3); }
+.ko-kickoff { font-size:.7rem; color:var(--mute); margin-left:auto; font-weight:600; }
+
+/* Teams row */
+.ko-matchup-row {
+  display:flex; align-items:center; gap:.5rem;
+}
+.ko-side {
+  flex:1; display:flex; align-items:center; gap:.4rem;
+}
+.ko-home { justify-content:flex-start; }
+.ko-away { justify-content:flex-end; text-align:right; }
+.ko-flag { font-size:1.2rem; line-height:1; flex-shrink:0; }
+.ko-tname { font-size:.82rem; font-weight:600; color:var(--text); }
+.ko-win .ko-tname { color:var(--teal); font-weight:700; }
+.ko-out .ko-tname { color:var(--mute); font-weight:400; }
+.ko-adv-chip {
+  font-size:.55rem; font-weight:800; letter-spacing:.04em;
+  padding:.1rem .35rem; border-radius:3px;
+  background:rgba(0,200,180,.12); color:var(--teal); border:1px solid rgba(0,200,180,.3);
+  white-space:nowrap;
+}
+.ko-scorecell {
+  flex-shrink:0; text-align:center; min-width:52px;
+}
+.ko-scoreline {
+  font-size:1.15rem; font-weight:800; letter-spacing:.02em; color:var(--text);
+}
+.ko-vs { font-size:.75rem; color:var(--mute); font-weight:600; }
+
+/* Meta */
+.ko-meta-row { }
+.ko-venue-text { font-size:.68rem; color:var(--mute); }
+
+/* Preview (upcoming only) */
+.ko-preview { display:flex; flex-direction:column; gap:.45rem; padding-top:.35rem; border-top:1px solid var(--border); }
+.ko-prediction { display:flex; align-items:center; gap:.45rem; flex-wrap:wrap; }
+.ko-pred-label { font-size:.6rem; font-weight:700; text-transform:uppercase; letter-spacing:.05em; color:var(--mute); }
+.ko-pred-team { font-size:.78rem; font-weight:700; color:var(--text); }
+.ko-conf-chip {
+  font-size:.6rem; font-weight:700; padding:.1rem .4rem; border-radius:3px;
+  letter-spacing:.03em;
+}
+.ko-conf-chip.ko-conf-high { background:rgba(0,200,180,.12); color:var(--teal); border:1px solid rgba(0,200,180,.3); }
+.ko-conf-chip.ko-conf-lean { background:rgba(255,200,0,.12); color:var(--gold); border:1px solid rgba(255,200,0,.3); }
+.ko-conf-chip.ko-conf-toss { background:rgba(255,111,97,.12); color:var(--coral); border:1px solid rgba(255,111,97,.3); }
+.ko-why { font-size:.73rem; color:var(--mute); line-height:1.5; margin:0; }
+
+@media(max-width:600px){
+  .ko-grid { grid-template-columns:1fr; }
+  .ko-tname { font-size:.75rem; }
+}
